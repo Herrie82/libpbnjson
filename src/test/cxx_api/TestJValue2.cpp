@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2013-2014 LG Electronics, Inc.
+// Copyright (c) 2013-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <gtest/gtest.h>
 #include <pbnjson.hpp>
@@ -29,7 +27,10 @@ TEST(TestJValue, Constructors)
 	EXPECT_TRUE(JValue("1").isString());
 	EXPECT_TRUE(JValue(true).isBoolean());
 	EXPECT_TRUE(Object().isObject());
+	EXPECT_TRUE(JObject().isObject());
 	EXPECT_TRUE(Array().isArray());
+	EXPECT_TRUE(JArray().isArray());
+	EXPECT_TRUE(JValue(nullptr).isNull());
 }
 
 TEST(TestJValue, Assignment)
@@ -314,6 +315,17 @@ TEST(TestJValue, BracketsForObjects)
 	EXPECT_TRUE(object[0] == JValue());
 }
 
+TEST(TestJValue, CastToBool)
+{
+	JValue object = Object();
+	object.put("key1", "1");
+	object.put("key2", 3);
+	object.put("key3", JValue());
+	EXPECT_TRUE((bool)object["key3"]);
+	EXPECT_FALSE((bool)object["nokey"]);
+	EXPECT_TRUE((bool)object["key2"]);
+}
+
 TEST(TestJValue, CopyConstructor)
 {
 	JValue v1(Object());
@@ -322,6 +334,79 @@ TEST(TestJValue, CopyConstructor)
 	v2.put("key2", "val2");
 
 	EXPECT_TRUE(v1 == v2);
+}
+
+TEST(TestJValue, MoveConstructor)
+{
+	{
+	JValue v1;
+	EXPECT_TRUE(v1.isNull());
+	JValue v2(move(v1));
+	EXPECT_TRUE(v2.isNull());
+	}
+
+	{
+	JValue v1(42);
+	EXPECT_TRUE(v1.isNumber());
+	JValue v2(move(v1));
+	EXPECT_TRUE(v2.isNumber());
+	}
+
+	{
+	JValue v1("input");
+	EXPECT_TRUE(v1.isString());
+	JValue v2(move(v1));
+	EXPECT_TRUE(v2.isString());
+	}
+
+	{
+	JValue v1(Object());
+	EXPECT_TRUE(v1.isObject());
+	v1.put("answer", 42);
+	JValue v2(move(v1));
+	EXPECT_TRUE(v2.isObject());
+	EXPECT_TRUE(v2["answer"] == 42);
+	}
+
+	{
+	JObject jobj;
+	JValue jval { move(jobj) };
+	EXPECT_TRUE(jval.isObject());
+	}
+
+	{
+	JArray jarr;
+	JValue jval { move(jarr) };
+	EXPECT_TRUE(jval.isArray());
+	}
+}
+
+TEST(TestJValue, MoveAssignment)
+{
+	JValue valueNull = JValue();
+	JValue string = JValue("test");
+	JValue number = JValue(42);
+	JObject jobj { {"k","v"} };
+	JArray jarr { 1, 2, 3 };
+
+	JValue value;
+
+	value = move(number);
+	EXPECT_TRUE(value.isNumber());
+
+	value = move(string);
+	EXPECT_TRUE(value.isString());
+
+	value = move(valueNull);
+	EXPECT_TRUE(value.isNull());
+
+	value = move(jobj);
+	EXPECT_TRUE(value.isObject());
+	EXPECT_TRUE(value.objectSize() == 1);
+
+	value = move(jarr);
+	EXPECT_TRUE(value.isArray());
+	EXPECT_TRUE(value.arraySize() == 3);
 }
 
 TEST(TestJValue, Duplicate)
@@ -338,6 +423,14 @@ TEST(TestJValue, Duplicate)
 	EXPECT_TRUE(v2.hasKey("key2"));
 }
 
+TEST(TestJValue, DuplicateArray)
+{
+	auto a = Array() << true << 42 << "hello";
+	auto b = a.duplicate();
+
+	EXPECT_TRUE(a == b);
+}
+
 TEST(TestJValue, IteratorAdvance)
 {
 	JValue obj = Object();
@@ -349,22 +442,13 @@ TEST(TestJValue, IteratorAdvance)
 	}
 	ASSERT_EQ(10, obj.objectSize());
 
-	JValue::ObjectIterator it1 = obj.begin();
+	auto it1 = obj.children().begin();
 	for (int i = 1; i != 5; ++i)
 	{
 		JValue::KeyValue kv1 = *++it1;
-		JValue::KeyValue kv2 = *(obj.begin() + i);
+		JValue::KeyValue kv2 = *(obj.children().begin() + i);
 		EXPECT_TRUE(kv1 == kv2);
 	}
-}
-
-TEST(TestJValue, NonIterable)
-{
-	ASSERT_THROW(Array().begin(), JValue::InvalidType);
-	ASSERT_THROW(JValue(true).begin(), JValue::InvalidType);
-	ASSERT_THROW(JValue("hello").begin(), JValue::InvalidType);
-	ASSERT_THROW(JValue(13).begin(), JValue::InvalidType);
-	ASSERT_NO_THROW(Object().begin());
 }
 
 TEST(TestJValue, GetType)
@@ -384,4 +468,198 @@ TEST(TestJValue, AsNumber)
 	EXPECT_EQ(-1.5, parser.getDom()["value"].asNumber<double>());
 	parser.parse(R"({"value": -0.3})", JSchema::AllSchema(), nullptr);
 	EXPECT_EQ(-0.3, parser.getDom()["value"].asNumber<double>());
+}
+
+TEST(TestJValue, Stringify)
+{
+	{
+		JValue json = Array();
+		EXPECT_EQ("[]", json.stringify());
+		json << JValue() << JValue(1) << JValue("test");
+		EXPECT_EQ("[null,1,\"test\"]", json.stringify());
+	}
+	{
+		JValue json = JValue(int32_t(1));
+		EXPECT_EQ("1", json.stringify());
+	}
+	{
+		JValue json = JValue(true);
+		EXPECT_EQ("true", json.stringify());
+	}
+	{
+		JValue json = JValue();
+		EXPECT_EQ("null", json.stringify());
+	}
+	{
+		JValue json = JValue("");
+		EXPECT_EQ("\"\"", json.stringify());
+	}
+	{
+		JValue json = JValue("test");
+		EXPECT_EQ("\"test\"", json.stringify());
+	}
+	{
+		JValue json = JValue(42323.0234234);
+		EXPECT_EQ("42323.0234234", json.stringify());
+	}
+	{
+		JValue json = JValue(int64_t(4292496729600));
+		EXPECT_EQ("4292496729600", json.stringify());
+	}
+	{
+		JValue json = Object();
+		EXPECT_EQ("{}", json.stringify());
+		//Error situation. It is not legal to put JValue, that is not Object or Array, to the Object.
+		json << JValue(int32_t(1));
+		EXPECT_EQ("{}", json.stringify());
+	}
+	{
+		JValue json;
+		EXPECT_EQ("null", json.stringify());
+	}
+}
+
+TEST(TestJValue, Prettify)
+{
+	const char* INPUT = ( R"json(
+		{
+			"name": "Alisha"
+		}
+	)json");
+
+	JValue json = JDomParser::fromString(INPUT);
+	EXPECT_TRUE(json.isValid());
+
+	std::string json_str = json.stringify("  ");
+	std::string res2 = "{\n  \"name\": \"Alisha\"\n}\n";
+	EXPECT_TRUE(json_str.compare(res2) == 0);
+
+	json_str = json.stringify("\t");
+	std::string res3 = "{\n\t\"name\": \"Alisha\"\n}\n";
+	EXPECT_TRUE(json_str.compare(res3) == 0);
+
+	json_str = json.stringify(".."); // not acceptable, using "  " instead
+	EXPECT_TRUE(json_str.compare(res2) == 0);
+
+}
+
+TEST(TestJValue, GetError)
+{
+	JValue json = JDomParser::fromFile("file-file-blabla.bla");
+	EXPECT_FALSE(json);
+
+	std::string err_msg("Invalid parameters error. Can't open file: file-file-blabla.bla");
+
+	EXPECT_TRUE(err_msg.compare(json.errorString()) == 0);
+}
+
+TEST(TestJValue, BraceEnclosedInitializerList)
+{
+	JValue jstr { "asd" };
+	EXPECT_TRUE(jstr.isString());
+
+	JValue jobj { {"asd", 42} };
+	EXPECT_TRUE(jobj.isObject());
+
+	JValue obj = JObject { { "k1", 12 }, { "k2", true } };
+	EXPECT_TRUE(obj.objectSize() == 2);
+	EXPECT_TRUE(obj["k1"] == 12);
+	EXPECT_TRUE(obj["k2"].asBool()); // gtest need explicit conversion to bool
+
+	JArray arr {"string", 13};
+	EXPECT_TRUE(arr.arraySize() == 2);
+	EXPECT_TRUE(arr[0] == "string");
+	EXPECT_TRUE(arr[1] == 13);
+
+	JObject v {
+		{ "asd", 12 },
+		{ "qwe", JObject { {"zxc", 345} } },
+		{ "qaz", JArray {"wsx", 3.14, true, nullptr, 42} }
+	};
+	EXPECT_TRUE(v.objectSize() == 3);
+	EXPECT_TRUE(v["qwe"].objectSize() == 1);
+	EXPECT_TRUE(v["qaz"].arraySize() == 5);
+	EXPECT_TRUE(v["qaz"][3] == JValue());
+	EXPECT_TRUE(v["qaz"][1] == 3.14);
+}
+
+TEST(TestJValue, NumberAsNumber)
+{
+	int64_t i64val = 0;
+	int32_t i32val = 0;
+	double fval = 0;
+
+	EXPECT_EQ(CONV_OK, JValue(3.141592).asNumber(fval));
+	EXPECT_DOUBLE_EQ(3.141592, fval);
+
+	EXPECT_EQ(CONV_PRECISION_LOSS, JValue(3.141592).asNumber(i32val));
+	EXPECT_EQ(3, i32val);
+
+	EXPECT_EQ(CONV_OK, JValue(std::numeric_limits<int64_t>::max()).asNumber(i64val));
+	EXPECT_EQ(std::numeric_limits<int64_t>::max(), i64val);
+
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(JValue(std::numeric_limits<int64_t>::max()).asNumber(i32val)));
+	EXPECT_EQ(std::numeric_limits<int32_t>::max(), i32val);
+
+	EXPECT_TRUE(CONV_HAS_NEGATIVE_OVERFLOW(JValue(std::numeric_limits<int64_t>::min()).asNumber(i32val)));
+	EXPECT_EQ(std::numeric_limits<int32_t>::min(), i32val);
+
+	EXPECT_EQ(CONV_PRECISION_LOSS, JValue(std::numeric_limits<int64_t>::max()).asNumber(fval));
+	EXPECT_EQ(double(std::numeric_limits<int64_t>::max()), fval);
+
+	EXPECT_TRUE(CONV_HAS_NEGATIVE_OVERFLOW(JValue(std::numeric_limits<int64_t>::min()).asNumber(i32val)));
+	EXPECT_EQ(std::numeric_limits<int32_t>::min(), i32val);
+}
+
+TEST(TestJValue, NumberAsNumberString)
+{
+	std::string sval;
+
+	EXPECT_EQ(CONV_NOT_A_RAW_NUM, JValue(3.141592).asNumber(sval));
+
+	EXPECT_EQ(CONV_NOT_A_RAW_NUM, JValue(42).asNumber(sval));
+}
+
+TEST(TestJValue, NumericStringAsNumber)
+{
+	double fval;
+	int64_t ival;
+
+	EXPECT_EQ(CONV_OK, JValue(NumericString("3.141592")).asNumber(fval));
+	EXPECT_DOUBLE_EQ(3.141592, fval);
+
+	EXPECT_EQ(CONV_PRECISION_LOSS, JValue(NumericString("3.141592")).asNumber(ival));
+	EXPECT_EQ(3, ival);
+
+	EXPECT_EQ(CONV_OK, JValue(NumericString("42")).asNumber(fval));
+	EXPECT_DOUBLE_EQ(42, fval);
+
+	EXPECT_EQ(CONV_OK, JValue(NumericString("42")).asNumber(ival));
+	EXPECT_EQ(42, fval);
+
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(JValue(NumericString("1e1000000")).asNumber(fval)));
+	EXPECT_DOUBLE_EQ(std::numeric_limits<decltype(fval)>::max(), fval);
+
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(JValue(NumericString("1e1000000")).asNumber(ival)));
+	EXPECT_EQ(std::numeric_limits<decltype(ival)>::max(), ival);
+}
+
+TEST(TestJValue, NumericStringAsNumberString)
+{
+	std::string sval;
+
+	EXPECT_EQ(CONV_OK, JValue(NumericString("3.141592")).asNumber(sval));
+	EXPECT_EQ(std::string("3.141592"), sval);
+
+	EXPECT_EQ(CONV_OK, JValue(NumericString("42")).asNumber(sval));
+	EXPECT_EQ(std::string("42"), sval);
+}
+
+TEST(TestJValue, NumberEquality)
+{
+	JValue a(NumericString("4.2e-4"));
+	JValue b(NumericString("0.00042"));
+
+	EXPECT_EQ( a, b );
+	EXPECT_EQ( b, a );
 }

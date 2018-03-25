@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef JOBJECT_TYPES_H_
 #define JOBJECT_TYPES_H_
@@ -41,10 +39,18 @@ typedef struct jvalue* jvalue_ref;
 typedef struct jsaxparser *jsaxparser_ref;
 typedef struct jdomparser *jdomparser_ref;
 
+/**
+  * @brief Iterator through JSON DOM object
+ */
 typedef struct {
+	/// Internal structure iterator. Should not be used directly
 	GHashTableIter m_iter;
 } jobject_iter;
 
+/**
+ * @brief The options for the JSON array (currently unspecified). The structure is used for creation of JSON array.
+ * Now the structure does not have any flags
+ */
 typedef struct {
 
 } *jarray_opts;
@@ -56,20 +62,23 @@ typedef enum {
 } JSpliceOwnership;
 
 /**
- * A structure to represent strings that have length instead of being NULL-terminated.
- * This means it's friendly with Unicode encodings other than UTF-8 but more importantly allows
- * for some no-copy optimizations.
+ * @brief A structure to store a string and its length. This allows it to be friendly with Unicode encodings other
+ * than UTF-8 but more importantly allows some no-copy optimizations.
  */
 typedef struct {
+	/// pointer to string
 	const char *m_str;
-	size_t m_len;   /// this MUST be the number of characters in m_str not including any terminating nulls.
+	/// this should be set to the number of characters in m_str not including any terminating nulls.
+	size_t m_len;
 } raw_buffer;
 
 /**
  * A structure representing a key/value pair in a JSON object.
  */
 typedef struct {
+	/// string containing name of the key
 	jvalue_ref key;
+	/// contains JSON value
 	jvalue_ref value;
 } jobject_key_value;
 

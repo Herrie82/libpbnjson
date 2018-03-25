@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "../null_validator.h"
 #include "../validation_api.h"
@@ -54,9 +52,9 @@ protected:
 
 TEST_F(TestNullValidator, Null)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, NULL));
 }
 
@@ -64,6 +62,6 @@ TEST_F(TestNullValidator, Array)
 {
 	EXPECT_FALSE(validation_check(&(e = validation_event_arr_start()), s, this));
 	EXPECT_EQ(VEC_NOT_NULL, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, NULL));
 }

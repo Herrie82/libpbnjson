@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <jschema.h>
 #include <jobject.h>
@@ -41,22 +39,15 @@
 jschema_ref jschema_new(void)
 {
 	jschema_ref s = g_new0(jschema, 1);
-	if (!s)
-		return NULL;
 	s->ref_count = 1;
 	s->uri_resolver = uri_resolver_new();
-	if (!s->uri_resolver)
-	{
-		g_free(s);
-		return NULL;
-	}
 	return s;
 }
 
 jschema_ref jschema_copy(jschema_ref schema)
 {
 	if (schema != jschema_all())
-		++schema->ref_count;
+		g_atomic_int_inc(&schema->ref_count);
 
 	return schema;
 }
@@ -73,7 +64,7 @@ void jschema_release(jschema_ref *schema)
 		return;
 	}
 
-	if (--s->ref_count)
+	if (!g_atomic_int_dec_and_test(&s->ref_count))
 		return;
 	validator_unref(s->validator);
 	uri_resolver_free(s->uri_resolver);
@@ -99,18 +90,60 @@ static void OnError(size_t offset, SchemaErrorCode error, char const *message, v
 	}
 }
 
+/*
+ * @brief version 2.X Keep document
+ *        version 3.X Converts relative:document to document
+ */
+static bool normalize_uri(const char *document, char *out, size_t len)
+{
+	UriParserStateA state;
+	UriUriA scheme, doc, result;
+
+	state.uri = &doc;
+	if (URI_SUCCESS != uriParseUriA(&state, document))
+	{
+		uriFreeUriMembersA(&doc);
+		return false;
+	}
+
+	state.uri = &scheme;
+	(void)uriParseUriA(&state, URI_SCHEME_RELATIVE);
+
+	// removing scheme "relative:"
+	if (URI_SUCCESS != uriRemoveBaseUriA(&result, &doc, &scheme, URI_FALSE))
+	{
+		uriFreeUriMembersA(&doc);
+		uriFreeUriMembersA(&result);
+		uriFreeUriMembersA(&scheme);
+		strncpy(out, document, len);
+		return true;
+	}
+
+	uriToStringA(out, &result, len, NULL);
+
+	uriFreeUriMembersA(&doc);
+	uriFreeUriMembersA(&result);
+	uriFreeUriMembersA(&scheme);
+	return true;
+}
+
 static bool resolve_document(jschema_ref schema,
                              char const *document,
                              JSchemaResolverRef resolver)
 {
+	size_t len = strlen(document) + 1;
+	char file_name[len];
+
+	if (!normalize_uri(document, file_name, len))
+		return false;
+
+	resolver->m_resourceToResolve = j_cstr_to_buffer(file_name);
 	resolver->m_ctxt = schema;
-	resolver->m_resourceToResolve = j_cstr_to_buffer(document);
 
 	jschema_ref resolved_schema = NULL;
-	if (SCHEMA_RESOLVED != resolver->m_resolve(resolver, &resolved_schema))
+	if (SCHEMA_RESOLVED != resolver->m_resolve(resolver, &resolved_schema) || !resolved_schema) {
 		return false;
-	if (!resolved_schema)
-		return false;
+	}
 
 	// We can lose link to the document while stealing, let's create a copy
 	char doc_name[strlen(document) + 1];
@@ -119,43 +152,15 @@ static bool resolve_document(jschema_ref schema,
 	// The validator may have been requested with a different document, than its path.
 	uri_resolver_add_validator(schema->uri_resolver, doc_name, "#", resolved_schema->validator);
 	jschema_release(&resolved_schema);
+
 	return true;
 }
 
-static jschema_ref jschema_parse_internal(raw_buffer input,
-                                          char const *root_scope,
-                                          JSchemaOptimizationFlags inputOpt,
-                                          JErrorCallbacksRef errorHandler,
-                                          JSchemaResolverRef resolver)
-{
-	jschema_ref schema = jschema_new();
-	if (!schema)
-		return NULL;
-
-	schema->validator = parse_schema_n(input.m_str, input.m_len,
-	                                   schema->uri_resolver, root_scope,
-	                                   &OnError, errorHandler);
-
-	if (!schema->validator || (resolver && !jschema_resolve_ex(schema, resolver)))
-	{
-		jschema_release(&schema);
-		return NULL;
-	}
-
-	return schema;
-}
-
-bool jschema_resolve(JSchemaInfoRef schema_info)
-{
-	return jschema_resolve_ex(schema_info->m_schema, schema_info->m_resolver);
-}
-
-bool jschema_resolve_ex(jschema_ref schema, JSchemaResolverRef resolver)
+static bool jschema_resolve_internal(jschema_ref schema, JSchemaResolverRef resolver)
 {
 	assert(schema->uri_resolver);
-
-	if (!resolver || !resolver->m_resolve)
-		return false;
+	assert(resolver);
+	assert(resolver->m_resolve);
 
 	char const *document_to_resolve = NULL;
 	char const *prev_document_to_resolve = NULL;
@@ -179,6 +184,38 @@ bool jschema_resolve_ex(jschema_ref schema, JSchemaResolverRef resolver)
 	return true;
 }
 
+static jschema_ref jschema_parse_internal(raw_buffer input,
+                                          char const *root_scope,
+                                          JSchemaOptimizationFlags inputOpt,
+                                          JErrorCallbacksRef errorHandler,
+                                          JSchemaResolverRef resolver)
+{
+	jschema_ref schema = jschema_new();
+
+	schema->validator = parse_schema_n(input.m_str, input.m_len,
+	                                   schema->uri_resolver,
+	                                   root_scope,
+	                                   &OnError, errorHandler);
+
+	if (!schema->validator || (resolver && !jschema_resolve_internal(schema, resolver)))
+	{
+		jschema_release(&schema);
+		return NULL;
+	}
+
+	return schema;
+}
+
+bool jschema_resolve(jschema_ref schema, JSchemaResolverRef resolver)
+{
+	return jschema_resolve_internal(schema, resolver);
+}
+
+bool jschema_resolve_ex(jschema_ref schema, JSchemaResolverRef resolver)
+{
+	return jschema_resolve_internal(schema, resolver);
+}
+
 void jschema_info_init(JSchemaInfoRef schemaInfo, jschema_ref schema, JSchemaResolverRef resolver, JErrorCallbacksRef errHandler)
 {
 	// if the structure ever changes, fill the remaining with 0
@@ -190,7 +227,7 @@ void jschema_info_init(JSchemaInfoRef schemaInfo, jschema_ref schema, JSchemaRes
 jschema_ref jschema_parse(raw_buffer input,
                           JSchemaOptimizationFlags inputOpt, JErrorCallbacksRef errorHandler)
 {
-	return jschema_parse_internal(input, "", inputOpt, errorHandler, NULL);
+	return jschema_parse_internal(input, URI_SCHEME_RELATIVE, inputOpt, errorHandler, NULL);
 }
 
 jschema_ref jschema_parse_file(const char *file, JErrorCallbacksRef errorHandler)
@@ -202,6 +239,7 @@ jschema_ref jschema_parse_file_resolve(const char *file, const char *rootScope, 
 {
 	// mmap the file
 	const char *mapContents = NULL;
+	jschema_ref parsedSchema = NULL;
 	size_t mapSize = 0;
 	struct stat fileInfo;
 	char fileUri[3 * strlen(file) + 8]; //Recommend size by uriparser for unix
@@ -209,26 +247,23 @@ jschema_ref jschema_parse_file_resolve(const char *file, const char *rootScope, 
 	int fd = open(file, O_RDONLY);
 	if (-1 == fd)
 	{
-		PJ_LOG_WARN("PBNJSON_SCHEMA_OPEN", 1, PMLOGKS("FILE", file),
-		            "Unable to open schema file %s", file);
+		PJ_LOG_WARN("Unable to open schema file %s", file);
 		return NULL;
 	}
 
 	if (-1 == fstat(fd, &fileInfo))
 	{
-		PJ_LOG_WARN("PBNJSON_SCHEMA_INFO", 1, PMLOGKS("FILE", file),
-		            "Unable to get information for schema file %s", file);
-		goto map_failure;
+		PJ_LOG_WARN("Unable to get information for schema file %s", file);
+		goto free_resources;
 	}
 	mapSize = fileInfo.st_size;
 
 	mapContents = mmap(NULL, mapSize, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, fd, 0);
 	if (mapContents == MAP_FAILED || mapContents == NULL)
 	{
-		PJ_LOG_WARN("PBNJSON_SCHEMA_MMAP", 1, PMLOGKS("FILE", file),
-		            "Failed to create memory map for schema file %s", file);
+		PJ_LOG_WARN("Failed to create memory map for schema file %s", file);
 		mapContents = NULL;
-		goto map_failure;
+		goto free_resources;
 	}
 
 	close(fd), fd = -1;
@@ -239,40 +274,31 @@ jschema_ref jschema_parse_file_resolve(const char *file, const char *rootScope, 
 		rootScope = fileUri;
 	}
 
-	jschema_ref parsedSchema = jschema_parse_internal(j_str_to_buffer(mapContents, mapSize),
-	                                                  rootScope,
-	                                                  DOMOPT_INPUT_OUTLIVES_WITH_NOCHANGE,
-	                                                  errorHandler,
-	                                                  resolver);
+	parsedSchema = jschema_parse_internal(j_str_to_buffer(mapContents, mapSize),
+	                                      rootScope,
+	                                      DOMOPT_INPUT_OUTLIVES_WITH_NOCHANGE,
+	                                      errorHandler,
+	                                      resolver);
 	if (parsedSchema == NULL)
 	{
-		PJ_LOG_WARN("PBNJSON_SCHEMA_PARSE", 1, PMLOGKS("FILE", file),
-		            "Failed to parse schema file %s", file);
-		goto map_failure;
+		PJ_LOG_WARN("Failed to parse schema file %s", file);
+		goto free_resources;
 	}
 
-	if (mapContents)
-		munmap((char *)mapContents, mapSize), mapContents = NULL;
-
-	if (fd != -1)
-		close(fd), fd = -1;
-
-	return parsedSchema;
-
-map_failure:
+free_resources:
 	if (mapContents)
 		munmap((char *)mapContents, mapSize);
 
 	if (fd != -1)
 		close(fd);
 
-	return NULL;
+	return parsedSchema;
 }
 
 jschema_ref jschema_parse_ex(raw_buffer input, JSchemaOptimizationFlags inputOpt, JSchemaInfoRef validationInfo)
 {
 	return jschema_parse_internal(input,
-	                              "",
+	                              URI_SCHEME_RELATIVE,
 	                              inputOpt,
 	                              validationInfo->m_errHandler,
 	                              validationInfo->m_resolver);
@@ -287,4 +313,62 @@ static jschema JSCHEMA_ALL =
 jschema_ref jschema_all()
 {
 	return &JSCHEMA_ALL;
+}
+
+static
+void _jschema_parse_error(size_t offset, SchemaErrorCode error, char const *message, void *ctxt)
+{
+	jerror **err = (jerror **) ctxt;
+	if (error == SEC_SYNTAX)
+		jerror_set_formatted(err, JERROR_TYPE_SYNTAX,
+		                     "Schema syntax error at position %zu: %s",
+		                     offset, message);
+	else
+		jerror_set_formatted(err, JERROR_TYPE_SCHEMA,
+		                     "Schema parse failure at position %zu: %s (code %d)",
+		                     offset, message, error);
+}
+
+jschema_ref jschema_create(raw_buffer input, jerror **err)
+{
+	jschema_ref schema = jschema_new();
+
+	schema->validator = parse_schema_n(input.m_str, input.m_len,
+	                                   schema->uri_resolver, URI_SCHEME_RELATIVE,
+	                                   _jschema_parse_error, err);
+
+	if (!schema->validator)
+	{
+		jschema_release(&schema);
+		return NULL;
+	}
+
+	return schema;
+}
+
+jschema_ref jschema_fcreate(const char *file, jerror **err)
+{
+	jschema_ref schema = NULL;
+	_jbuffer buf = {
+		.buffer = { 0 },
+		.destructor = NULL
+	};
+
+	if (!j_fopen(file, &buf, err))
+		return schema;
+
+	schema = jschema_new();
+
+	schema->validator = parse_schema_n(buf.buffer.m_str, buf.buffer.m_len,
+	                                   schema->uri_resolver, URI_SCHEME_RELATIVE,
+	                                   _jschema_parse_error, err);
+	buf.destructor(&buf);
+
+	if (!schema->validator)
+	{
+		jschema_release(&schema);
+		return NULL;
+	}
+
+	return schema;
 }

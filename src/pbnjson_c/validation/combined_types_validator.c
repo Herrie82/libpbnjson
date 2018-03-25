@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "combined_types_validator.h"
 #include "array_items.h"
@@ -201,6 +199,38 @@ static Validator* set_additional_properties(Validator *v, Validator *additional)
 	return v;
 }
 
+static Validator* set_pattern_properties(Validator *v, ObjectPatternProperties *p)
+{
+	CombinedTypesValidator *c = (CombinedTypesValidator *) v;
+	if (c->types[V_OBJ])
+		c->types[V_OBJ] = validator_set_object_pattern_properties(c->types[V_OBJ], p);
+	return v;
+}
+
+static Validator* set_required(Validator *v, ObjectRequired *p)
+{
+	CombinedTypesValidator *c = (CombinedTypesValidator *) v;
+	if (c->types[V_OBJ])
+		c->types[V_OBJ] = validator_set_object_required(c->types[V_OBJ], p);
+	return v;
+}
+
+static Validator* set_max_properties(Validator *v, size_t max)
+{
+	CombinedTypesValidator *c = (CombinedTypesValidator *) v;
+	if (c->types[V_OBJ])
+		c->types[V_OBJ] = validator_set_object_max_properties(c->types[V_OBJ], max);
+	return v;
+}
+
+static Validator* set_min_properties(Validator *v, size_t min)
+{
+	CombinedTypesValidator *c = (CombinedTypesValidator *) v;
+	if (c->types[V_OBJ])
+		c->types[V_OBJ] = validator_set_object_min_properties(c->types[V_OBJ], min);
+	return v;
+}
+
 static Validator* set_default(Validator *validator, jvalue_ref def_value)
 {
 	CombinedTypesValidator *v = (CombinedTypesValidator *) validator;
@@ -223,16 +253,16 @@ static void _visit(Validator *v,
 	int i = 0;
 	for (; i < V_TYPES_NUM; ++i)
 	{
-		Validator *v = c->types[i];
-		if (!v)
+		Validator *item = c->types[i];
+		if (!item)
 			continue;
-		enter_func(NULL, v, ctxt);
-		validator_visit(v, enter_func, exit_func, ctxt);
+		enter_func(NULL, item, ctxt);
+		validator_visit(item, enter_func, exit_func, ctxt);
 		Validator *new_v = NULL;
-		exit_func(NULL, v, ctxt, &new_v);
+		exit_func(NULL, item, ctxt, &new_v);
 		if (new_v)
 		{
-			validator_unref(v);
+			validator_unref(item);
 			c->types[i] = new_v;
 		}
 	}
@@ -257,6 +287,10 @@ ValidatorVtable combined_types_vtable =
 	.set_array_additional_items = set_additional_items,
 	.set_object_properties = set_properties,
 	.set_object_additional_properties = set_additional_properties,
+	.set_object_pattern_properties = set_pattern_properties,
+	.set_object_required = set_required,
+	.set_object_max_properties = set_max_properties,
+	.set_object_min_properties = set_min_properties,
 	.set_default = set_default,
 	.get_default = get_default,
 };
@@ -324,8 +358,6 @@ void combined_types_validator_fill_all_types(CombinedTypesValidator *c)
 			case V_OBJ:
 				c->types[i] = object_validator_instance();
 				break;
-			default:
-				c->types[i] = generic_validator_instance();
 			}
 		}
 	}

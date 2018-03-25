@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "../parser_api.h"
 #include "../generic_validator.h"
@@ -86,7 +84,7 @@ TEST_F(Parser, SyntaxError)
 	v = parse_schema_no_uri("{\"type\": \"null\",}", OnError, this);
 	EXPECT_TRUE(v == NULL);
 
-	EXPECT_EQ(17, offset);
+	EXPECT_EQ(17U, offset);
 	EXPECT_EQ(SEC_SYNTAX, error);
 	EXPECT_EQ("parse error: invalid object key (must be a string)\n", message);
 }
@@ -96,7 +94,7 @@ TEST_F(Parser, TypeError)
 	v = parse_schema_no_uri("{\"type\": \"asdf\"}", OnError, this);
 	EXPECT_TRUE(v == NULL);
 
-	EXPECT_EQ(16, offset);
+	EXPECT_EQ(16U, offset);
 	EXPECT_EQ(SEC_TYPE_VALUE, error);
 	EXPECT_EQ(SchemaGetErrorMessage(SEC_TYPE_VALUE), message);
 }
@@ -106,7 +104,7 @@ TEST_F(Parser, MaxLengthNegative)
 	v = parse_schema_no_uri("{\"maxLength\": -1}", OnError, this);
 	EXPECT_TRUE(v == NULL);
 
-	EXPECT_EQ(17, offset);
+	EXPECT_EQ(17U, offset);
 	EXPECT_EQ(SEC_MAX_LENGTH_VALUE_FORMAT, error);
 	EXPECT_EQ(SchemaGetErrorMessage(SEC_MAX_LENGTH_VALUE_FORMAT), message);
 }
@@ -116,7 +114,7 @@ TEST_F(Parser, MaxLengthFloat)
 	v = parse_schema_no_uri("{\"maxLength\": 4.2}", OnError, this);
 	EXPECT_TRUE(v == NULL);
 
-	EXPECT_EQ(18, offset);
+	EXPECT_EQ(18U, offset);
 	EXPECT_EQ(SEC_MAX_LENGTH_VALUE_FORMAT, error);
 	EXPECT_EQ(SchemaGetErrorMessage(SEC_MAX_LENGTH_VALUE_FORMAT), message);
 }
@@ -126,7 +124,7 @@ TEST_F(Parser, MinLengthNegative)
 	v = parse_schema_no_uri("{\"minLength\": -1}", OnError, this);
 	EXPECT_TRUE(v == NULL);
 
-	EXPECT_EQ(17, offset);
+	EXPECT_EQ(17U, offset);
 	EXPECT_EQ(SEC_MIN_LENGTH_VALUE_FORMAT, error);
 	EXPECT_EQ(SchemaGetErrorMessage(SEC_MIN_LENGTH_VALUE_FORMAT), message);
 }
@@ -136,7 +134,7 @@ TEST_F(Parser, MinLengthFloat)
 	v = parse_schema_no_uri("{\"minLength\": 4.2}", OnError, this);
 	EXPECT_TRUE(v == NULL);
 
-	EXPECT_EQ(18, offset);
+	EXPECT_EQ(18U, offset);
 	EXPECT_EQ(SEC_MIN_LENGTH_VALUE_FORMAT, error);
 	EXPECT_EQ(SchemaGetErrorMessage(SEC_MIN_LENGTH_VALUE_FORMAT), message);
 }

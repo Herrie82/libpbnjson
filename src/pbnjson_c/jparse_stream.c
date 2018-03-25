@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <jparse_stream.h>
 #include <jobject.h>
@@ -25,16 +23,16 @@
 #include "jobject_internal.h"
 #include "jparse_stream_internal.h"
 #include "jtraverse.h"
+#include "key_dictionary.h"
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
 #include <string.h>
+#include <glib.h>
 
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/mman.h>
-#include <fcntl.h>
 #include <inttypes.h>
+#include <sys/mman.h>
+#include "dom_string_memory_pool.h"
 
 #define DOM_POOL_SIZE 4
 
@@ -58,62 +56,73 @@ static yajl_callbacks no_callbacks =
 	dummy_dom_context, // yajl_end_array
 };
 
-static bool jsax_parse_internal(PJSAXCallbacks *parser, raw_buffer input, JSchemaInfoRef schemaInfo, void **ctxt);
+static bool jsax_parse_internal(PJSAXCallbacks *parser, raw_buffer input, const jschema_ref schema, void **ctxt, jerror **err);
+// TODO: deprecated
+static bool jsax_parse_internal_old(PJSAXCallbacks *parser, raw_buffer input, JSchemaInfoRef schemaInfo, void **ctxt);
 
-static bool file_size(int fd, off_t *s)
-{
-	struct stat finfo;
-	if (0 != fstat(fd, &finfo)) {
-		return false;
-	}
-	*s = finfo.st_size;
-	return true;
-}
-
-static inline jvalue_ref createOptimalString(JDOMOptimization opt, const char *str, size_t strLen)
+static inline jvalue_ref createOptimalString(dom_string_memory_pool* pool, JDOMOptimization opt, const char *str, size_t strLen)
 {
 	if (opt == DOMOPT_INPUT_OUTLIVES_WITH_NOCHANGE)
 		return jstring_create_nocopy(j_str_to_buffer(str, strLen));
+	if (pool)
+		return jstring_create_from_pool_internal(pool, str, strLen);
 	return jstring_create_copy(j_str_to_buffer(str, strLen));
 }
 
-static inline jvalue_ref createOptimalNumber(JDOMOptimization opt, const char *str, size_t strLen)
+static inline jvalue_ref createOptimalNumber(dom_string_memory_pool* pool, JDOMOptimization opt, const char *str, size_t strLen)
 {
 	if (opt == DOMOPT_INPUT_OUTLIVES_WITH_NOCHANGE)
 		return jnumber_create_unsafe(j_str_to_buffer(str, strLen), NULL);
+	if (pool)
+		return jnumber_create_from_pool_internal(pool, str, strLen);
 	return jnumber_create(j_str_to_buffer(str, strLen));
 }
 
-static inline DomInfo* getDOMContext(JSAXContextRef ctxt)
+static inline DomInfo* getDOMInfo(JSAXContextRef ctxt)
 {
-	return (DomInfo*)jsax_getContext(ctxt);
+	struct jdomcontext* dctxt = (struct jdomcontext*)jsax_getContext(ctxt);
+	return dctxt->context;
 }
 
-static inline void changeDOMContext(JSAXContextRef ctxt, DomInfo *domCtxt)
+static inline void changeDOMInfo(JSAXContextRef ctxt, DomInfo *domCtxt)
 {
-	jsax_changeContext(ctxt, domCtxt);
+	struct jdomcontext* dctxt = (struct jdomcontext*)jsax_getContext(ctxt);
+	dctxt->context = domCtxt;
+}
+
+static inline dom_string_memory_pool* getDOMPool(JSAXContextRef ctxt)
+{
+	return ((struct jdomcontext*)jsax_getContext(ctxt))->string_pool;
 }
 
 int dom_null(JSAXContextRef ctxt)
 {
-	DomInfo *data = getDOMContext(ctxt);
+	DomInfo *data = getDOMInfo(ctxt);
 	// no handle to the context
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "null encountered without any context");
-	// no parent node
-	CHECK_CONDITION_RETURN_VALUE(data->m_prev == NULL, 0, "unexpected state - how is this possible?");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "null encountered without any context");
 
 	SANITY_CHECK_POINTER(ctxt);
 	SANITY_CHECK_POINTER(data->m_prev);
 
 	if (data->m_value == NULL) {
-		CHECK_CONDITION_RETURN_VALUE(!jis_array(data->m_prev->m_value), 0, "Improper place for null");
-		jarray_append(data->m_prev->m_value, jnull());
+		if (data->m_prev != NULL)
+		{
+			CHECK_CONDITION_RETURN_PARSER_ERROR(!jis_array(data->m_prev->m_value), 0,
+			                                    &ctxt->m_error,
+			                                    "Improper place for null");
+			jarray_append(data->m_prev->m_value, jnull());
+		}
+		else data->m_value = jnull();
 	} else if (jis_string(data->m_value)) {
-		CHECK_CONDITION_RETURN_VALUE(!jis_object(data->m_prev->m_value), 0, "Improper place for null");
+		CHECK_CONDITION_RETURN_PARSER_ERROR(!jis_object(data->m_prev->m_value), 0,
+		                                    &ctxt->m_error,
+		                                    "Improper place for null");
 		jobject_put(data->m_prev->m_value, data->m_value, jnull());
 		data->m_value = NULL;
 	} else {
-		PJ_LOG_ERR("PBNJSON_NULL_VALUE_WO_KEY", 0, "value portion of key-value pair without a key");
+		jerror_set(&ctxt->m_error, JERROR_TYPE_SYNTAX, "Improper place for null. Value portion of key-value pair but not a key");
 		return 0;
 	}
 
@@ -122,19 +131,28 @@ int dom_null(JSAXContextRef ctxt)
 
 int dom_boolean(JSAXContextRef ctxt, bool value)
 {
-	DomInfo *data = getDOMContext(ctxt);
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "boolean encountered without any context");
-	CHECK_CONDITION_RETURN_VALUE(data->m_prev == NULL, 0, "unexpected state - how is this possible?");
+	DomInfo *data = getDOMInfo(ctxt);
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "boolean encountered without any context");
 
 	if (data->m_value == NULL) {
-		CHECK_CONDITION_RETURN_VALUE(!jis_array(data->m_prev->m_value), 0, "Improper place for boolean");
-		jarray_append(data->m_prev->m_value, jboolean_create(value));
+		if (data->m_prev != NULL)
+		{
+			CHECK_CONDITION_RETURN_PARSER_ERROR(!jis_array(data->m_prev->m_value), 0,
+			                                    &ctxt->m_error,
+			                                    "Improper place for boolean");
+			jarray_append(data->m_prev->m_value, jboolean_create(value));
+		}
+		else data->m_value = jboolean_create(value);
 	} else if (jis_string(data->m_value)) {
-		CHECK_CONDITION_RETURN_VALUE(!jis_object(data->m_prev->m_value), 0, "Improper place for boolean");
+		CHECK_CONDITION_RETURN_PARSER_ERROR(!jis_object(data->m_prev->m_value), 0,
+		                                    &ctxt->m_error,
+		                                    "Improper place for boolean");
 		jobject_put(data->m_prev->m_value, data->m_value, jboolean_create(value));
 		data->m_value = NULL;
 	} else {
-		PJ_LOG_ERR("PBNJSON_BOOL_VALUE_WO_KEY", 0, "value portion of key-value pair without a key");
+		jerror_set(&ctxt->m_error, JERROR_TYPE_SYNTAX, "Improper place for boolean");
 		return 0;
 	}
 
@@ -143,90 +161,106 @@ int dom_boolean(JSAXContextRef ctxt, bool value)
 
 int dom_number(JSAXContextRef ctxt, const char *number, size_t numberLen)
 {
-	DomInfo *data = getDOMContext(ctxt);
+	DomInfo *data = getDOMInfo(ctxt);
+	dom_string_memory_pool *pool = getDOMPool(ctxt);
+
 	jvalue_ref jnum;
 
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "number encountered without any context");
-	CHECK_CONDITION_RETURN_VALUE(data->m_prev == NULL, 0, "unexpected state - how is this possible?");
-	CHECK_POINTER_RETURN_VALUE(number, 0);
-	CHECK_CONDITION_RETURN_VALUE(numberLen == 0, 0, "unexpected - numeric string doesn't actually contain a number");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "number encountered without any context");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(number == 0, 0,
+	                                    &ctxt->m_error,
+	                                    "Null pointer number string");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(numberLen == 0, 0,
+	                                    &ctxt->m_error,
+	                                    "unexpected - numeric string doesn't actually contain a number");
 
-	jnum = createOptimalNumber(data->m_optInformation, number, numberLen);
+	jnum = createOptimalNumber(pool, data->m_optInformation, number, numberLen);
 
-	if (data->m_value == NULL) {
-		if (UNLIKELY(!jis_array(data->m_prev->m_value))) {
-			PJ_LOG_ERR("PBNJSON_ARR_MISPLACED_NUM", 1, PMLOGKS("NUM", number), "Improper place for number");
-			j_release(&jnum);
-			return 0;
+	do {
+		if (data->m_value == NULL) {
+			if (data->m_prev != NULL)
+			{
+				if (UNLIKELY(!jis_array(data->m_prev->m_value))) break;
+				jarray_append(data->m_prev->m_value, jnum);
+			}
+			else data->m_value = jnum;
 		}
-		jarray_append(data->m_prev->m_value, jnum);
-	} else if (jis_string(data->m_value)) {
-		if (UNLIKELY(!jis_object(data->m_prev->m_value))) {
-			PJ_LOG_ERR("PBNJSON_OBJ_MISPLACED_NUM", 1, PMLOGKS("NUM", number), "Improper place for number");
-			j_release(&jnum);
-			return 0;
+		else if (jis_string(data->m_value)) {
+			if (UNLIKELY(!jis_object(data->m_prev->m_value))) break;
+			jobject_put(data->m_prev->m_value, data->m_value, jnum);
+			data->m_value = NULL;
 		}
-		jobject_put(data->m_prev->m_value, data->m_value, jnum);
-		data->m_value = NULL;
-	} else {
-		PJ_LOG_ERR("PBNJSON_NUM_VALUE_WO_KEY", 1, PMLOGKS("NUM", number), "value portion of key-value pair without a key");
-		return 0;
+		else break;
+
+		return 1;
 	}
+	while (false);
 
-	return 1;
+	jerror_set(&ctxt->m_error, JERROR_TYPE_SYNTAX, "Improper place for number");
+	j_release(&jnum);
+	return 0;
 }
 
 int dom_string(JSAXContextRef ctxt, const char *string, size_t stringLen)
 {
-	DomInfo *data = getDOMContext(ctxt);
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "string encountered without any context");
-	CHECK_CONDITION_RETURN_VALUE(data->m_prev == NULL, 0, "unexpected state - how is this possible?");
+	DomInfo *data = getDOMInfo(ctxt);
+	dom_string_memory_pool *pool = getDOMPool(ctxt);
 
-	jvalue_ref jstr = createOptimalString(data->m_optInformation, string, stringLen);
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "string encountered without any context");
 
-	if (data->m_value == NULL) {
-		if (UNLIKELY(!jis_array(data->m_prev->m_value))) {
-			PJ_LOG_ERR("PBNJSON_ARR_MISPLACED_STR", 1, PMLOGKS("STRING", string), "Improper place for string");
-			j_release(&jstr);
-			return 0;
+	jvalue_ref jstr = createOptimalString(pool, data->m_optInformation, string, stringLen);
+
+	do {
+		if (data->m_value == NULL) {
+			if (data->m_prev != NULL)
+			{
+				if (UNLIKELY(!jis_array(data->m_prev->m_value))) break;
+				jarray_append(data->m_prev->m_value, jstr);
+			}
+			else data->m_value = jstr;
 		}
-		jarray_append(data->m_prev->m_value, jstr);
-	} else if (jis_string(data->m_value)) {
-		if (UNLIKELY(!jis_object(data->m_prev->m_value))) {
-			PJ_LOG_ERR("PBNJSON_OBJ_MISPLACED_STR", 1, PMLOGKS("STRING", string), "Improper place for string");
-			j_release(&jstr);
-			return 0;
+		else if (jis_string(data->m_value)) {
+			if (UNLIKELY(!jis_object(data->m_prev->m_value))) break;
+			jobject_put(data->m_prev->m_value, data->m_value, jstr);
+			data->m_value = NULL;
 		}
-		jobject_put(data->m_prev->m_value, data->m_value, jstr);
-		data->m_value = NULL;
-	} else {
-		PJ_LOG_ERR("PBNJSON_STR_VALUE_WO_KEY", 1, PMLOGKS("STRING", string), "value portion of key-value pair without a key");
-		return 0;
+		else break;
+
+		return 1;
 	}
+	while (false);
 
-	return 1;
+	jerror_set(&ctxt->m_error, JERROR_TYPE_SYNTAX, "Improper place for string");
+	j_release(&jstr);
+	return 0;
 }
 
 int dom_object_start(JSAXContextRef ctxt)
 {
-	DomInfo *data = getDOMContext(ctxt);
+	DomInfo *data = getDOMInfo(ctxt);
 	jvalue_ref newParent;
 	DomInfo *newChild;
 
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "object encountered without any context");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "object encountered without any context");
 
 	newParent = jobject_create();
 	newChild = calloc(1, sizeof(DomInfo));
 
 	if (UNLIKELY(newChild == NULL || !jis_valid(newParent))) {
-		PJ_LOG_ERR("PBNJSON_OBJ_CALLOC_ERR", 0, "Failed to allocate space for new object");
+		jerror_set(&ctxt->m_error, JERROR_TYPE_SYNTAX, "Failed to allocate space for new object");
 		j_release(&newParent);
 		free(newChild);
 		return 0;
 	}
 	newChild->m_prev = data;
 	newChild->m_optInformation = data->m_optInformation;
-	changeDOMContext(ctxt, newChild);
+	changeDOMInfo(ctxt, newChild);
 
 	if (data->m_prev != NULL) {
 		if (jis_array(data->m_prev->m_value)) {
@@ -236,7 +270,7 @@ int dom_object_start(JSAXContextRef ctxt)
 			assert(jis_object(data->m_prev->m_value));
 			if (UNLIKELY(!jis_string(data->m_value)))
 			{
-				PJ_LOG_ERR("PBNJSON_OBJ_MISPLACED_CHILD", 0, "improper place for a child object");
+				jerror_set(&ctxt->m_error, JERROR_TYPE_SYNTAX, "Improper place for a child object");
 				j_release(&newParent);
 				return 0;
 			}
@@ -251,32 +285,46 @@ int dom_object_start(JSAXContextRef ctxt)
 
 int dom_object_key(JSAXContextRef ctxt, const char *key, size_t keyLen)
 {
-	DomInfo *data = getDOMContext(ctxt);
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "object key encountered without any context");
-	CHECK_CONDITION_RETURN_VALUE(data->m_value != NULL, 0, "Improper place for an object key");
-	CHECK_CONDITION_RETURN_VALUE(data->m_prev == NULL, 0, "object key encountered without any parent object");
-	CHECK_CONDITION_RETURN_VALUE(!jis_object(data->m_prev->m_value), 0, "object key encountered without any parent object");
+	DomInfo *data = getDOMInfo(ctxt);
 
-	// Need to be careful here - typically, m_value isn't reference counted
-	// thus if parsing fails and m_value hasn't been inserted into a bigger object that is
-	// tracked, we will leak.
-	// The alternate behaviour is to insert into the parent value with a null value.
-	// Then when inserting the value of the key/value pair into an object, we first remove the key & re-insert
-	// a key/value pair (we don't currently have a replace mechanism).
-	data->m_value = createOptimalString(data->m_optInformation, key, keyLen);
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "object key encountered without any context");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data->m_value != NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "Improper place for an object key");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data->m_prev == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "object key encountered without any parent object");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(!jis_object(data->m_prev->m_value), 0,
+	                                    &ctxt->m_error,
+	                                    "object key encountered without any parent object");
+
+	// We try to optimize memory utilization here for larger JSONs. Common
+	// case is to have similar JSON objects throughout the system (consider
+	// keys like returnValue, subscription etc. We will share the keys via
+	// common hash table. If lookup fails, we create a new instance for the
+	// key.
+	data->m_value = keyDictionaryLookup(key, keyLen);
 
 	return 1;
 }
 
 int dom_object_end(JSAXContextRef ctxt)
 {
-	DomInfo *data = getDOMContext(ctxt);
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "object end encountered without any context");
-	CHECK_CONDITION_RETURN_VALUE(data->m_value != NULL, 0, "mismatch between key/value count");
-	CHECK_CONDITION_RETURN_VALUE(!jis_object(data->m_prev->m_value), 0, "object end encountered, but not in an object");
+	DomInfo *data = getDOMInfo(ctxt);
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "object end encountered without any context");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data->m_value != NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "mismatch between key/value count");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(!jis_object(data->m_prev->m_value), 0,
+	                                    &ctxt->m_error,
+	                                    "object end encountered, but not in an object");
 
 	assert(data->m_prev != NULL);
-	changeDOMContext(ctxt, data->m_prev);
+	changeDOMInfo(ctxt, data->m_prev);
 	if (data->m_prev->m_prev != NULL)
 	{
 		j_release(&data->m_prev->m_value);
@@ -290,22 +338,24 @@ int dom_object_end(JSAXContextRef ctxt)
 
 int dom_array_start(JSAXContextRef ctxt)
 {
-	DomInfo *data = getDOMContext(ctxt);
+	DomInfo *data = getDOMInfo(ctxt);
 	jvalue_ref newParent;
 	DomInfo *newChild;
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "object encountered without any context");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "object encountered without any context");
 
 	newParent = jarray_create(NULL);
 	newChild = calloc(1, sizeof(DomInfo));
 	if (UNLIKELY(newChild == NULL || !jis_valid(newParent))) {
-		PJ_LOG_ERR("PBNJSON_ARR_CALLOC_ERR", 0, "Failed to allocate space for new array node");
+		jerror_set(&ctxt->m_error, JERROR_TYPE_SYNTAX, "Failed to allocate space for new array node");
 		j_release(&newParent);
 		free(newChild);
 		return 0;
 	}
 	newChild->m_prev = data;
 	newChild->m_optInformation = data->m_optInformation;
-	changeDOMContext(ctxt, newChild);
+	changeDOMInfo(ctxt, newChild);
 
 	if (data->m_prev != NULL) {
 		if (jis_array(data->m_prev->m_value)) {
@@ -314,7 +364,7 @@ int dom_array_start(JSAXContextRef ctxt)
 		} else {
 			assert(jis_object(data->m_prev->m_value));
 			if (UNLIKELY(!jis_string(data->m_value))) {
-				PJ_LOG_ERR("PBNJSON_ARR_MISPLACED_CHILD", 0, "improper place for a child object");
+				jerror_set(&ctxt->m_error, JERROR_TYPE_SYNTAX, "improper place for a child object");
 				j_release(&newParent);
 				return 0;
 			}
@@ -329,13 +379,19 @@ int dom_array_start(JSAXContextRef ctxt)
 
 int dom_array_end(JSAXContextRef ctxt)
 {
-	DomInfo *data = getDOMContext(ctxt);
-	CHECK_CONDITION_RETURN_VALUE(data == NULL, 0, "array end encountered without any context");
-	CHECK_CONDITION_RETURN_VALUE(data->m_value != NULL, 0, "key/value for array");
-	CHECK_CONDITION_RETURN_VALUE(!jis_array(data->m_prev->m_value), 0, "array end encountered, but not in an array");
+	DomInfo *data = getDOMInfo(ctxt);
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data == NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "array end encountered without any context");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(data->m_value != NULL, 0,
+	                                    &ctxt->m_error,
+	                                    "key/value for array");
+	CHECK_CONDITION_RETURN_PARSER_ERROR(!jis_array(data->m_prev->m_value), 0,
+	                                    &ctxt->m_error,
+	                                    "array end encountered, but not in an array");
 
 	assert(data->m_prev != NULL);
-	changeDOMContext(ctxt, data->m_prev);
+	changeDOMInfo(ctxt, data->m_prev);
 	if (data->m_prev->m_prev != NULL)
 	{
 		j_release(&data->m_prev->m_value);
@@ -359,11 +415,33 @@ static void dom_cleanup(DomInfo *dom_info, DomInfo *original_ptr)
 	}
 }
 
+jvalue_ref jdom_create(raw_buffer input, const jschema_ref schema, jerror **err)
+{
+	jvalue_ref jval = jinvalid();
+	struct jdomparser parser;
+
+	jdomparser_init(&parser, schema);
+	parser.context.string_pool = dom_string_memory_pool_create();
+
+	if (jdomparser_feed(&parser, input.m_str, input.m_len) && jdomparser_end(&parser)) {
+		jval = jdomparser_get_result(&parser);
+	}
+	else if (err && !(*err)) {
+		*err = parser.saxparser.internalCtxt.m_error;
+		parser.saxparser.internalCtxt.m_error = NULL;
+	}
+
+	jdomparser_deinit(&parser);
+	dom_string_memory_pool_destroy(parser.context.string_pool);
+
+	return jval;
+}
+
 jvalue_ref jdom_parse(raw_buffer input, JDOMOptimizationFlags optimizationMode, JSchemaInfoRef schemaInfo)
 {
 	// create parser
 	struct jdomparser parser;
-	if (!jdomparser_init(&parser, schemaInfo, optimizationMode)) {
+	if (!jdomparser_init_old(&parser, schemaInfo, optimizationMode)) {
 		return jinvalid();
 	}
 
@@ -379,77 +457,53 @@ jvalue_ref jdom_parse(raw_buffer input, JDOMOptimizationFlags optimizationMode, 
 	return jval;
 }
 
+jvalue_ref jdom_fcreate(const char *file, const jschema_ref schema, jerror **err)
+{
+	CHECK_POINTER_RETURN_VALUE(schema, jinvalid());
+
+	_jbuffer buf = {
+		.buffer = { 0 },
+		.destructor = NULL
+	};
+	jvalue_ref result = jinvalid();
+
+	if (!j_fopen(file, &buf, err))
+		return result;
+
+	result = jdom_create(buf.buffer, schema, err);
+
+	if (UNLIKELY(!jis_valid(result))) {
+		buf.destructor(&buf);
+	} else {
+		result->m_file = buf;
+	}
+
+	return result;
+}
+
 jvalue_ref jdom_parse_file(const char *file, JSchemaInfoRef schemaInfo, JFileOptimizationFlags flags)
 {
 	CHECK_POINTER_RETURN_NULL(file);
 	CHECK_POINTER_RETURN_NULL(schemaInfo);
 
-	int fd;
-	off_t fileSize;
-	raw_buffer input = { 0 };
-	jvalue_ref result;
-	char *err_msg;
+	_jbuffer buf = {
+		.buffer = { 0 },
+		.destructor = NULL
+	};
+	jvalue_ref result = jinvalid();
 
-	fd = open(file, O_RDONLY);
-	if (fd == -1) {
-		goto errno_parse_failure;
-	}
+	if (!j_fopen(file, &buf, NULL))
+		return result;
 
-	if (!file_size(fd, &fileSize)) {
-		goto errno_parse_failure;
-	}
-
-	input.m_len = fileSize;
-	if (input.m_len != fileSize) {
-		PJ_LOG_ERR("PBNJSON_BIG_FILE", 1, PMLOGKS("FILE", file), "File too big - currently unsupported by this API");
-		close(fd);
-	}
-
-	if (flags & JFileOptMMap) {
-		input.m_str = (char *)mmap(NULL, input.m_len, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, fd, 0);
-
-		if (input.m_str == NULL || input.m_str == MAP_FAILED) {
-			goto errno_parse_failure;
-		}
-	} else {
-		input.m_str = (char *)malloc(input.m_len + 1);
-		if (input.m_len != read(fd, (char *)input.m_str, input.m_len)) {
-			goto errno_parse_failure;
-		}
-		((char *)input.m_str)[input.m_len] = 0;
-	}
-
-	result = jdom_parse(input, DOMOPT_INPUT_OUTLIVES_WITH_NOCHANGE, schemaInfo);
-
-return_result:
-	close(fd);
+	result = jdom_parse(buf.buffer, DOMOPT_INPUT_OUTLIVES_WITH_NOCHANGE, schemaInfo);
 
 	if (UNLIKELY(!jis_valid(result))) {
-		if (input.m_str) {
-			if (flags & JFileOptMMap) {
-				munmap((void *)input.m_str, input.m_len);
-			} else {
-				free((void *)input.m_str);
-			}
-		}
+		buf.destructor(&buf);
 	} else {
-		result->m_backingBuffer = input;
-		result->m_backingBufferMMap = flags & JFileOptMMap;
+		result->m_file = buf;
 	}
 
 	return result;
-
-errno_parse_failure:
-	err_msg = strdup(strerror(errno));
-	PJ_LOG_WARN("PBNJSON_PARCE_ERR", 3,
-	            PMLOGKS("FILE", file),
-	            PMLOGKFV("ERRNO", "%d", errno),
-	            PMLOGKS("ERROR", err_msg),
-	            "Attempt to parse json document '%s' failed (%d) : %s", file, errno, err_msg);
-	free(err_msg);
-
-	result = jinvalid();
-	goto return_result;
 }
 
 void jsax_changeContext(JSAXContextRef saxCtxt, void *userCtxt)
@@ -689,7 +743,7 @@ static bool on_default_property(ValidationState *s, char const *key, jvalue_ref 
 static bool has_array_duplicates(ValidationState *s, void *ctxt)
 {
 	assert(ctxt);
-	DomInfo *data = getDOMContext((JSAXContextRef) ctxt);
+	DomInfo *data = getDOMInfo((JSAXContextRef) ctxt);
 	assert(data && data->m_prev && data->m_prev->m_value && jis_array(data->m_prev->m_value));
 
 	return jarray_has_duplicates(data->m_prev->m_value);
@@ -729,7 +783,6 @@ static bool handle_yajl_error(yajl_status parseResult,
 		{
 			return false;
 		}
-		PJ_LOG_WARN("PBNJSON_YAJL_CLIENT_CANC", 0, "Client claims they handled an unknown error in '%.*s'", (int)buf_len, buf);
 		return true;
 #if YAJL_VERSION < 20000
 	case yajl_status_insufficient_data:
@@ -738,7 +791,6 @@ static bool handle_yajl_error(yajl_status parseResult,
 		{
 			return false;
 		}
-		PJ_LOG_WARN("PBNJSON_YAJL_INSUFF_DATA", 0, "Client claims they handled incomplete JSON input provided '%.*s'", (int)buf_len, buf);
 		return true;
 #endif
 	case yajl_status_error:
@@ -751,19 +803,42 @@ static bool handle_yajl_error(yajl_status parseResult,
 			return false;
 		}
 		yajl_free_error(handle, (unsigned char*)internalCtxt->errorDescription);
-
-		PJ_LOG_WARN("PBNJSON_YAJL_ERR", 0, "Client claims they handled an unknown error in '%.*s'", (int)buf_len, buf);
 		return true;
 	}
 }
 
 static bool jsax_parse_internal(PJSAXCallbacks *callbacks,
                                 raw_buffer input,
-                                JSchemaInfoRef schemaInfo,
-                                void **callback_ctxt)
+                                const jschema_ref schema,
+                                void **callback_ctxt,
+                                jerror **err)
 {
 	struct jsaxparser parser;
-	if (!jsaxparser_init(&parser, schemaInfo, callbacks, callback_ctxt))
+	jsaxparser_init(&parser, schema, callbacks, callback_ctxt);
+
+	if (!jsaxparser_feed(&parser, input.m_str, input.m_len) || !jsaxparser_end(&parser)) {
+		if (err && !(*err))
+		{
+			*err = parser.internalCtxt.m_error;
+			parser.internalCtxt.m_error = NULL;
+		}
+		jsaxparser_deinit(&parser);
+
+		return false;
+	}
+
+	jsaxparser_deinit(&parser);
+	return true;
+}
+
+// TODO: deprecated
+static bool jsax_parse_internal_old(PJSAXCallbacks *callbacks,
+                                    raw_buffer input,
+                                    JSchemaInfoRef schemaInfo,
+                                    void **callback_ctxt)
+{
+	struct jsaxparser parser;
+	if (!jsaxparser_init_old(&parser, schemaInfo, callbacks, callback_ctxt))
 		return false;
 
 	if (!jsaxparser_feed(&parser, input.m_str, input.m_len) || !jsaxparser_end(&parser)) {
@@ -776,9 +851,16 @@ static bool jsax_parse_internal(PJSAXCallbacks *callbacks,
 	return true;
 }
 
+bool jsax_parse_with_callbacks(raw_buffer input, const jschema_ref schema,
+                               PJSAXCallbacks *callbacks, void *callback_ctxt,
+                               jerror **err)
+{
+	return jsax_parse_internal(callbacks, input, schema, callback_ctxt, err);
+}
+
 bool jsax_parse_ex(PJSAXCallbacks *parser, raw_buffer input, JSchemaInfoRef schemaInfo, void **ctxt)
 {
-	return jsax_parse_internal(parser, input, schemaInfo, ctxt);
+	return jsax_parse_internal_old(parser, input, schemaInfo, ctxt);
 }
 
 bool jsax_parse(PJSAXCallbacks *parser, raw_buffer input, JSchemaInfoRef schema)
@@ -786,6 +868,38 @@ bool jsax_parse(PJSAXCallbacks *parser, raw_buffer input, JSchemaInfoRef schema)
 	return jsax_parse_ex(parser, input, schema, NULL);
 }
 
+static bool jerr_parser(void *ctxt, JSAXContextRef parseCtxt)
+{
+	jsaxparser_ref parser = (jsaxparser_ref)ctxt;
+	jerror_set_formatted(&parser->internalCtxt.m_error, JERROR_TYPE_SYNTAX, "Parser error %d: %s",
+	                     parseCtxt->m_error_code, parseCtxt->errorDescription);
+	return false;
+}
+
+static bool jerr_schema(void *ctxt, JSAXContextRef parseCtxt)
+{
+	jsaxparser_ref parser = (jsaxparser_ref)ctxt;
+
+	const char *errorDescription = ValidationGetErrorMessage(parseCtxt->m_error_code);
+	if (errorDescription) {
+		jerror_set_formatted(&parser->internalCtxt.m_error, JERROR_TYPE_SCHEMA, "%d: %s",
+		                     parseCtxt->m_error_code, errorDescription);
+	}
+
+	return false;
+}
+
+
+static bool jerr_unknown(void *ctxt, JSAXContextRef parseCtxt)
+{
+	jsaxparser_ref parser = (jsaxparser_ref)ctxt;
+	jerror_set_formatted(&parser->internalCtxt.m_error, JERROR_TYPE_SYNTAX, "Parser error %d: %s",
+	                     parseCtxt->m_error_code, parseCtxt->errorDescription);
+
+	return false;
+}
+
+// TODO: deprecated
 static bool err_parser(void *ctxt, JSAXContextRef parseCtxt)
 {
 	struct jsaxparser *parser = (struct jsaxparser*)ctxt;
@@ -794,6 +908,7 @@ static bool err_parser(void *ctxt, JSAXContextRef parseCtxt)
 	return false;
 }
 
+// TODO: deprecated
 static bool err_schema(void *ctxt, JSAXContextRef parseCtxt)
 {
 	struct jsaxparser *parser = (struct jsaxparser *)ctxt;
@@ -813,6 +928,7 @@ static bool err_schema(void *ctxt, JSAXContextRef parseCtxt)
 	return false;
 }
 
+// TODO: deprecated
 static bool err_unknown(void *ctxt, JSAXContextRef parseCtxt)
 {
 	struct jsaxparser *parser = (struct jsaxparser *)ctxt;
@@ -832,11 +948,21 @@ void jsaxparser_free_memory(jsaxparser_ref parser)
 	free(parser);
 }
 
+jsaxparser_ref jsaxparser_new(const jschema_ref schema, PJSAXCallbacks *callbacks, void *callback_ctxt)
+{
+	jsaxparser_ref parser = jsaxparser_alloc_memory();
+	if (parser) {
+		jsaxparser_init(parser, schema, callbacks, callback_ctxt);
+	}
+
+	return parser;
+}
+
 jsaxparser_ref jsaxparser_create(JSchemaInfoRef schemaInfo, PJSAXCallbacks *callback, void *callback_ctxt)
 {
 	jsaxparser_ref parser = jsaxparser_alloc_memory();
 	if (parser) {
-		if (!jsaxparser_init(parser, schemaInfo, callback, callback_ctxt)) {
+		if (!jsaxparser_init_old(parser, schemaInfo, callback, callback_ctxt)) {
 			jsaxparser_free_memory(parser);
 			parser = NULL;
 		}
@@ -851,7 +977,85 @@ void jsaxparser_release(jsaxparser_ref *parser)
 	jsaxparser_free_memory(*parser);
 }
 
-bool jsaxparser_init(jsaxparser_ref parser, JSchemaInfoRef schemaInfo, PJSAXCallbacks *callback, void *callback_ctxt)
+void jsaxparser_init(jsaxparser_ref parser, const jschema_ref schema, PJSAXCallbacks *callback, void *callback_ctxt)
+{
+	memset(parser, 0, sizeof(struct jsaxparser) - sizeof(mem_pool_t));
+
+	parser->validator = NOTHING_VALIDATOR;
+	parser->uri_resolver = NULL;
+	parser->schemaInfo = NULL;
+	if (schema)
+	{
+		parser->validator = schema->validator;
+		parser->uri_resolver = schema->uri_resolver;
+	}
+
+	if (callback == NULL) {
+		parser->yajl_cb = no_callbacks;
+	} else {
+		parser->yajl_cb.yajl_null = callback->m_null ? (pj_yajl_null)callback->m_null : no_callbacks.yajl_null;
+		parser->yajl_cb.yajl_boolean = callback->m_boolean ? (pj_yajl_boolean)callback->m_boolean : no_callbacks.yajl_boolean;
+		parser->yajl_cb.yajl_integer = NULL;
+		parser->yajl_cb.yajl_double = NULL;
+		parser->yajl_cb.yajl_number = callback->m_number ? (pj_yajl_number)callback->m_number : no_callbacks.yajl_number;
+		parser->yajl_cb.yajl_string = callback->m_string ? (pj_yajl_string)callback->m_string : no_callbacks.yajl_string;
+		parser->yajl_cb.yajl_start_map = callback->m_objStart ? (pj_yajl_start_map)callback->m_objStart : no_callbacks.yajl_start_map;
+		parser->yajl_cb.yajl_map_key = callback->m_objKey ? (pj_yajl_map_key)callback->m_objKey : no_callbacks.yajl_map_key;
+		parser->yajl_cb.yajl_end_map = callback->m_objEnd ? (pj_yajl_end_map)callback->m_objEnd : no_callbacks.yajl_end_map;
+		parser->yajl_cb.yajl_start_array = callback->m_arrStart ? (pj_yajl_start_array)callback->m_arrStart : no_callbacks.yajl_start_array;
+		parser->yajl_cb.yajl_end_array = callback->m_arrEnd ? (pj_yajl_end_array)callback->m_arrEnd : no_callbacks.yajl_end_array;
+	}
+
+	parser->errorHandler.m_parser = jerr_parser;
+	parser->errorHandler.m_schema = jerr_schema;
+	parser->errorHandler.m_unknown = jerr_unknown;
+	parser->errorHandler.m_ctxt = parser;
+
+	PJSAXContext __internalCtxt =
+	{
+		.ctxt = callback_ctxt,
+		.m_handlers = &parser->yajl_cb,
+		.m_errors = &parser->errorHandler,
+		.m_error_code = 0,
+		.errorDescription = NULL,
+		.validation_state = &parser->validation_state,
+		.m_error = NULL
+	};
+	parser->internalCtxt = __internalCtxt;
+
+	validation_state_init(&(parser->validation_state),
+	                        parser->validator,
+	                        parser->uri_resolver,
+	                        &jparse_notification);
+
+	mempool_init(&parser->memory_pool);
+	yajl_alloc_funcs allocFuncs = {
+		mempool_malloc,
+		mempool_realloc,
+		mempool_free,
+		&parser->memory_pool
+	};
+	const bool allow_comments = true;
+
+#if YAJL_VERSION < 20000
+	yajl_parser_config yajl_opts =
+	{
+		allow_comments,
+		0, // currently only UTF-8 will be supported for input.
+	};
+
+	parser->handle = yajl_alloc(&my_bounce, &yajl_opts, &allocFuncs, &parser->internalCtxt);
+#else
+	parser->handle = yajl_alloc(&my_bounce, &allocFuncs, &parser->internalCtxt);
+	yajl_config(parser->handle, yajl_allow_comments, allow_comments ? 1 : 0);
+
+	// currently only UTF-8 will be supported for input.
+	yajl_config(parser->handle, yajl_dont_validate_strings, 1);
+#endif // YAJL_VERSION
+}
+
+// TODO: Deprecated. Use jsaxparser_init instead
+bool jsaxparser_init_old(jsaxparser_ref parser, JSchemaInfoRef schemaInfo, PJSAXCallbacks *callback, void *callback_ctxt)
 {
 	memset(parser, 0, sizeof(struct jsaxparser) - sizeof(mem_pool_t));
 
@@ -898,6 +1102,7 @@ bool jsaxparser_init(jsaxparser_ref parser, JSchemaInfoRef schemaInfo, PJSAXCall
 		.m_error_code = 0,
 		.errorDescription = NULL,
 		.validation_state = &parser->validation_state,
+		.m_error = NULL
 	};
 	parser->internalCtxt = __internalCtxt;
 
@@ -942,6 +1147,7 @@ static bool jsaxparser_process_error(jsaxparser_ref parser, const char *buf, int
 			parser->yajlError = NULL;
 		}
 		parser->yajlError = (char*)yajl_get_error(parser->handle, 1, (unsigned char*)buf, buf_len);
+		jerror_set(&parser->internalCtxt.m_error, JERROR_TYPE_SYNTAX, parser->yajlError);
 		return false;
 	}
 
@@ -957,6 +1163,9 @@ const char *jsaxparser_get_error(jsaxparser_ref parser)
 
 	if (parser->yajlError)
 		return parser->yajlError;
+
+	if (parser->internalCtxt.m_error)
+		return parser->internalCtxt.m_error->message;
 
 	return NULL;
 }
@@ -997,12 +1206,8 @@ void jsaxparser_deinit(jsaxparser_ref parser)
 		yajl_free(parser->handle);
 		parser->handle = NULL;
 	}
-}
 
-static void *jsaxparser_get_sax_context(jsaxparser_ref parser)
-{
-	SANITY_CHECK_POINTER(parser);
-	return jsax_getContext(&parser->internalCtxt);
+	jerror_free(parser->internalCtxt.m_error);
 }
 
 /**
@@ -1050,11 +1255,21 @@ void jdomparser_free_memory(jdomparser_ref parser)
 	}
 }
 
+jdomparser_ref jdomparser_new(const jschema_ref schema)
+{
+	jdomparser_ref parser = jdomparser_alloc_memory();
+	if (parser) {
+		jdomparser_init(parser, schema);
+	}
+
+	return parser;
+}
+
 jdomparser_ref jdomparser_create(JSchemaInfoRef schemaInfo, JDOMOptimizationFlags optimizationMode)
 {
 	jdomparser_ref parser = jdomparser_alloc_memory();
 	if (parser) {
-		if (!jdomparser_init(parser, schemaInfo, optimizationMode)) {
+		if (!jdomparser_init_old(parser, schemaInfo, optimizationMode)) {
 			jdomparser_free_memory(parser);
 			parser = NULL;
 		}
@@ -1081,11 +1296,24 @@ static PJSAXCallbacks dom_callbacks = {
 	dom_null
 };
 
-bool jdomparser_init(jdomparser_ref parser, JSchemaInfoRef schemaInfo, JDOMOptimizationFlags optimizationMode)
+void jdomparser_init(jdomparser_ref parser, const jschema_ref schema)
 {
 	memset(&parser->topLevelContext, 0, sizeof(parser->topLevelContext));
+	memset(&parser->context, 0, sizeof(parser->context));
 
-	return jsaxparser_init(&parser->saxparser, schemaInfo, &dom_callbacks, &parser->topLevelContext);
+	parser->context.context = &parser->topLevelContext;
+
+	jsaxparser_init(&parser->saxparser, schema, &dom_callbacks, &parser->context);
+}
+
+bool jdomparser_init_old(jdomparser_ref parser, JSchemaInfoRef schemaInfo, JDOMOptimizationFlags optimizationMode)
+{
+	memset(&parser->topLevelContext, 0, sizeof(parser->topLevelContext));
+	memset(&parser->context, 0, sizeof(parser->context));
+
+	parser->context.context = &parser->topLevelContext;
+
+	return jsaxparser_init_old(&parser->saxparser, schemaInfo, &dom_callbacks, &parser->context);
 }
 
 bool jdomparser_feed(jdomparser_ref parser, const char *buf, int buf_len)
@@ -1100,8 +1328,9 @@ bool jdomparser_end(jdomparser_ref parser)
 
 void jdomparser_deinit(jdomparser_ref parser)
 {
-	if (jsaxparser_get_sax_context(&parser->saxparser) != &parser->topLevelContext) {
-		dom_cleanup(jsaxparser_get_sax_context(&parser->saxparser), &parser->topLevelContext);
+	DomInfo *context = getDOMInfo(&parser->saxparser.internalCtxt);
+	if (context != &parser->topLevelContext) {
+		dom_cleanup(context, &parser->topLevelContext);
 	}
 
 	j_release(&parser->topLevelContext.m_value);

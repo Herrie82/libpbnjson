@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <gtest/gtest.h>
 #include <pbnjson.hpp>
@@ -172,17 +170,17 @@ TEST(TestDOM, ObjectIterator)
 	EXPECT_TRUE(parsed["a"]["b"].isString());
 	EXPECT_EQ(parsed["a"]["b"].asString(), string("c"));
 	EXPECT_TRUE(parsed["a"]["d"].isNumber());
-	EXPECT_EQ(parsed["a"]["d"].asNumber<int>(), 5);
+	EXPECT_EQ(5, parsed["a"]["d"].asNumber<int>());
 
-	JValue::ObjectIterator i = parsed.begin();
-	ASSERT_TRUE(i != parsed.end());
+	auto i = parsed.children().begin();
+	ASSERT_TRUE(i != parsed.children().end());
 	EXPECT_TRUE((*i).first.isString());
 	EXPECT_EQ((*i).first.asString(), string("a"));
 	EXPECT_TRUE((*i).second.isObject());
 
-	i = (*i).second.begin();
-	EXPECT_TRUE(i == parsed["a"].begin());
-	ASSERT_TRUE(i != parsed["a"].end());
+	i = (*i).second.children().begin();
+	EXPECT_TRUE(i == parsed["a"].children().begin());
+	ASSERT_TRUE(i != parsed["a"].children().end());
 	EXPECT_TRUE((*i).first.isString());
 	EXPECT_EQ((*i).first.asString(), string("b"));
 	EXPECT_TRUE((*i).second.isString());
@@ -192,7 +190,7 @@ TEST(TestDOM, ObjectIterator)
 	EXPECT_TRUE((*i).first.isString());
 	EXPECT_EQ((*i).first.asString(), string("d"));
 	EXPECT_TRUE((*i).second.isNumber());
-	EXPECT_EQ((*i).second.asNumber<int>(), 5);
+	EXPECT_EQ(5, (*i).second.asNumber<int>());
 }
 
 // sanity check that assumptions about limits of double storage
@@ -261,15 +259,15 @@ TEST(TestDOM, ObjectComplex)
 	EXPECT_EQ(complexObject["bool1"].asBool(), true);
 	EXPECT_EQ(complexObject["bool2"].asBool(), false);
 
-	EXPECT_EQ(complexObject["numi32_1"].asNumber<int32_t>(), 0);
+	EXPECT_EQ(0, complexObject["numi32_1"].asNumber<int32_t>());
 	EXPECT_EQ(complexObject["numi32_2"].asNumber<int32_t>(), -50);
-	EXPECT_EQ(complexObject["numi32_3"].asNumber<int32_t>(), 12345323);
+	EXPECT_EQ(12345323, complexObject["numi32_3"].asNumber<int32_t>());
 	EXPECT_EQ(complexObject["numi64_1"].asNumber<int64_t>(), maxInt32 + 1);
 	int32_t i32(0);
-	EXPECT_EQ(CONV_POSITIVE_OVERFLOW, complexObject["numi64_1"].asNumber(i32));
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(complexObject["numi64_1"].asNumber(i32)));
 	EXPECT_EQ(complexObject["numi64_2"].asNumber<int64_t>(), minInt32 - 1);
-	EXPECT_EQ(CONV_NEGATIVE_OVERFLOW, complexObject["numi64_2"].asNumber(i32));
-	EXPECT_EQ(complexObject["numi64_3"].asNumber<int64_t>(), 0);
+	EXPECT_TRUE(CONV_HAS_NEGATIVE_OVERFLOW(complexObject["numi64_2"].asNumber(i32)));
+	EXPECT_EQ(0, complexObject["numi64_3"].asNumber<int64_t>());
 	EXPECT_EQ(complexObject["numi64_4"].asNumber<int64_t>(), maxDblPrecision);
 	EXPECT_EQ(complexObject["numi64_4"].asNumber<double>(), (double)maxDblPrecision);
 	EXPECT_EQ(complexObject["numi64_5"].asNumber<int64_t>(), minDblPrecision);
@@ -301,8 +299,8 @@ TEST(TestDOM, ObjectComplex)
 	JValue obj1 = complexObject["obj1"];
 	EXPECT_EQ(obj1["num_1"].asNumber<int64_t>(i64), CONV_PRECISION_LOSS);
 	EXPECT_EQ(obj1["num_1"].asNumber<double>(), 64.234);
-	EXPECT_EQ(obj1["num_2"].asNumber<int64_t>(i64), CONV_POSITIVE_OVERFLOW | CONV_PRECISION_LOSS);
-	EXPECT_EQ(obj1["num_2"].asNumber<double>(dbl), CONV_POSITIVE_OVERFLOW);
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(obj1["num_2"].asNumber<int64_t>(i64)));
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(obj1["num_2"].asNumber<double>(dbl)));
 	EXPECT_EQ(obj1["num_2"].asNumber<string>(), string{veryLargeNumber});
 }
 
@@ -321,38 +319,38 @@ TEST(TestDOM, ArraySimple)
 	JValue simple_arr = Array();
 
 	simple_arr.put(4, true);
-	EXPECT_EQ(simple_arr.arraySize(), 5);
+	EXPECT_EQ(5, simple_arr.arraySize());
 
 	simple_arr.put(1, NumericString("1"));
-	EXPECT_EQ(simple_arr.arraySize(), 5);
+	EXPECT_EQ(5, simple_arr.arraySize());
 
 	simple_arr.put(2, 2);
-	EXPECT_EQ(simple_arr.arraySize(), 5);
+	EXPECT_EQ(5, simple_arr.arraySize());
 
 	simple_arr.put(3, false);
-	EXPECT_EQ(simple_arr.arraySize(), 5);
+	EXPECT_EQ(5, simple_arr.arraySize());
 
 	simple_arr.put(5, JValue());
-	EXPECT_EQ(simple_arr.arraySize(), 6);
+	EXPECT_EQ(6, simple_arr.arraySize());
 
 	simple_arr.put(6, "");
-	EXPECT_EQ(simple_arr.arraySize(), 7);
+	EXPECT_EQ(7, simple_arr.arraySize());
 
 	EXPECT_EQ(simple_arr[0], JValue());
 	simple_arr.put(0, "index 0");
-	EXPECT_EQ(simple_arr.arraySize(), 7);
+	EXPECT_EQ(7, simple_arr.arraySize());
 
 	simple_arr.put(7, 7.0);
-	EXPECT_EQ(simple_arr.arraySize(), 8);
+	EXPECT_EQ(8, simple_arr.arraySize());
 
 	EXPECT_TRUE(simple_arr[0].isString());
 	EXPECT_EQ(simple_arr[0].asString(), string{"index 0"});
 
 	EXPECT_TRUE(simple_arr[1].isNumber());
 	EXPECT_EQ(simple_arr[1].asNumber<string>(), string{"1"});
-	EXPECT_EQ(simple_arr[1].asNumber<int32_t>(), 1);
+	EXPECT_EQ(1, simple_arr[1].asNumber<int32_t>());
 
-	EXPECT_EQ(simple_arr[2].asNumber<int32_t>(), 2);
+	EXPECT_EQ(2, simple_arr[2].asNumber<int32_t>());
 
 	EXPECT_EQ(simple_arr[3].asBool(), false);
 	EXPECT_EQ(simple_arr[4].asBool(), true);
@@ -363,7 +361,7 @@ TEST(TestDOM, ArraySimple)
 	EXPECT_TRUE(simple_arr[6].isString());
 	EXPECT_EQ(simple_arr[6].asString(), string{""});
 
-	EXPECT_EQ(simple_arr[7].asNumber<int32_t>(), 7);
+	EXPECT_EQ(7, simple_arr[7].asNumber<int32_t>());
 }
 
 TEST(TestDOM, ArrayComplex)

@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef J_CXX_API_H_
 #define J_CXX_API_H_
 
+//! @cond Doxygen_Suppress
 #define API_EXPORT __attribute__((visibility("default")))
 #define API_IMPORT __attribute__((visibility("default")))
 #define API_LOCAL __attribute__((visibility("hidden")))
@@ -35,20 +34,24 @@
 	#define PJSONCXX_API
 	#define PJSONCXX_LOCAL
 #endif
+//! @endcond
 
 namespace pbnjson {
 
 /**
- * Set the name of the component utilizing this library.  This should be as descriptive as possible
- * to help narrow down bugs.  If this is never called, then the string "UNIDENTIFIED CONSUMER (pid)!!!!!" is used instead.
- * String must have program lifetime (or if it is no longer available, getConsumerName, setConsumerName(null), free old value).
+ * Set the name of the component utilizing this library (per-process). This should be as descriptive as possible
+ * to help narrow down bugs.
  *
- * @param name The name of the component using this API (per-process)
+ * Note: String must have program lifetime.
+ * Note: If this is never called, then the component's name will be printed as base name of /proc/$pid/cmdline or
+ * if detecting fails - 'unknown process name'.
+ *
+ * @param name The name of the component using this API.
  */
 PJSONCXX_API void setConsumerName(const char *name);
 
 /**
- * Gets the name set (this will not return the default, /proc/ based string)
+ * Get the consumer name. See #setConsumerName
  *
  * @return The name passed to setConsumerName previously or NULL if it was never called.
  */

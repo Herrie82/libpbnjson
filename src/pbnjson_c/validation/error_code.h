@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 
@@ -89,6 +87,9 @@ typedef enum _SchemaErrorCode
 	SEC_PROPERTIES_FORMAT,
 	SEC_PROPERTIES_OBJECT_FORMAT,
 	SEC_ADDITIONAL_PROPERTIES_FORMAT,
+	SEC_PATTERN_PROPERTIES_FORMAT,
+	SEC_PATTERN_PROPERTIES_EMPTY,
+	SEC_PATTERN_PROPERTIES_REGEX,
 	SEC_MAX_PROPERTIES_FORMAT,
 	SEC_MIN_PROPERTIES_FORMAT,
 	SEC_MAX_PROPERTIES_VALUE_FORMAT,

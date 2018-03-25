@@ -1,6 +1,4 @@
-# @@@LICENSE
-#
-# Copyright (c) 2014 LG Electronics, Inc.
+# Copyright (c) 2014-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# LICENSE@@@
+# SPDX-License-Identifier: Apache-2.0
 
 
 include_directories(${API_HEADERS})
-webos_add_compiler_flags(ALL -Wall "-std=gnu++0x")
+webos_add_compiler_flags(ALL -Wall -std=c++11)
 
 find_package(Boost 1.48 REQUIRED COMPONENTS program_options)
 
@@ -28,3 +26,7 @@ add_executable(pbnjson_validate
 target_link_libraries(pbnjson_validate
                       pbnjson_cpp
                       ${Boost_PROGRAM_OPTIONS_LIBRARIES})
+
+if (PBNJSON_INSTALL_TOOLS)
+	webos_build_program(NAME pbnjson_validate)
+endif ()

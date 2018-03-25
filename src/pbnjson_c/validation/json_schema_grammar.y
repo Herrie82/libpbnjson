@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 %token_prefix TOKEN_
 %name JsonSchemaParser
@@ -46,6 +44,7 @@
 #include "array_validator.h"
 #include "object_validator.h"
 #include "jvalue_feature.h"
+#include "object_pattern_properties.h"
 
 #include <jobject.h>
 #include <assert.h>
@@ -494,6 +493,7 @@ any_object_key(A) ::= KEY_NOT(B). { A = B; }
 any_object_key(A) ::= KEY_NOT_KEYWORD(B). { A = B; }
 any_object_key(A) ::= KEY_ONE_OF(B). { A = B; }
 any_object_key(A) ::= KEY_PATTERN(B). { A = B; }
+any_object_key(A) ::= KEY_PATTERN_PROPERTIES(B). { A = B; }
 any_object_key(A) ::= KEY_PROPERTIES(B). { A = B; }
 any_object_key(A) ::= KEY_REQUIRED(B). { A = B; }
 any_object_key(A) ::= KEY_TITLE(B). { A = B; }
@@ -1050,3 +1050,44 @@ instance(A) ::= NULL.
 {
 	A = jnull();
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Object patternProperties
+schema_feature(A) ::= KEY_PATTERN_PROPERTIES OBJ_START pattern_properties(B) OBJ_END.
+{
+	if (!B)
+		parser_context_set_error(context, SEC_PATTERN_PROPERTIES_EMPTY);
+	A = &B->base;
+}
+
+schema_feature(A) ::= KEY_PATTERN_PROPERTIES error.
+{
+	A = NULL;
+	parser_context_set_error(context, SEC_PATTERN_PROPERTIES_FORMAT);
+}
+
+%type pattern_properties { ObjectPatternProperties * }
+%destructor pattern_properties {
+	if ($$) object_pattern_properties_unref($$), $$ = NULL;
+}
+
+pattern_properties(A) ::= .
+{
+	A = NULL;
+}
+
+pattern_properties(A) ::= pattern_properties(B) any_object_key(K) schema(V).
+{
+	if (!B)
+		B = object_pattern_properties_new();
+	if (!object_pattern_properties_add(B, K.string.str, K.string.str_len, V))
+		parser_context_set_error(context, SEC_PATTERN_PROPERTIES_REGEX);
+	A = B;
+}
+
+pattern_properties(A) ::= pattern_properties(B) error.
+{
+	A = B;
+	parser_context_set_error(context, SEC_PATTERN_PROPERTIES_FORMAT);
+}
+

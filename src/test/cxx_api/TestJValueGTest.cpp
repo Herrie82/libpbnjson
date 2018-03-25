@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright 2012-2013 LG Electronics, Inc.
+// Copyright (c) 2012-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <pbnjson.hpp>
 #include <pbnjson.h>
@@ -153,6 +151,16 @@ TEST(JValue, remove)
 		pj::JValue json = pj::Object();
 		EXPECT_FALSE(json.remove(""));
 	}
+}
+
+TEST(JValue, jarray_remove)
+{
+	auto array = pj::JArray{"item1", "item2", "item3"};
+	ASSERT_EQ(3, array.arraySize());
+	EXPECT_FALSE(array.remove(13));
+	EXPECT_TRUE(array.remove(2));
+	ASSERT_EQ(2, array.arraySize());
+	EXPECT_EQ(R"(["item1","item2"])", array.stringify());
 }
 
 int main(int argc, char **argv) {

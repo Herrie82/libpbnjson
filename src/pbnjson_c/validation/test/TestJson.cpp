@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "../parser_api.h"
 #include "../validation_api.h"
@@ -756,6 +754,72 @@ TEST_F(Json, ObjectAdditionalPropertiesSchema)
 	EXPECT_FALSE(validate_json_plain("{\"b\": \"hello\"}", v));
 }
 
+TEST_F(Json, ObjectPatternProperties)
+{
+	v = parse_schema_bare(R"({
+		"type": "object",
+		"additionalProperties": false,
+		"patternProperties": {
+			"^b[a-z]+$": {"type": "boolean"},
+			"^n[a-z]+$": {"type": "number"},
+			"^s[0-9]+$": {"type": "string"}
+		}
+		})");
+	ASSERT_TRUE(v != NULL);
+
+	EXPECT_TRUE(validate_json_plain(R"({"baz": true})", v));
+	EXPECT_FALSE(validate_json_plain(R"({"baz": 1})", v));
+	EXPECT_FALSE(validate_json_plain(R"({"baz": "Hello"})", v));
+
+	EXPECT_TRUE(validate_json_plain(R"({"na": 13})", v));
+	EXPECT_FALSE(validate_json_plain(R"({"na": false})", v));
+	EXPECT_FALSE(validate_json_plain(R"({"na": "test"})", v));
+
+	EXPECT_TRUE(validate_json_plain(R"({"s0": "str"})", v));
+	EXPECT_FALSE(validate_json_plain(R"({"s0": false})", v));
+	EXPECT_FALSE(validate_json_plain(R"({"s0": 42})", v));
+}
+
+TEST_F(Json, ObjectPatternProperties2)
+{
+	// Example from json-schema.org
+	v = parse_schema_bare(R"({
+		"type": "object",
+		"properties": { "p1": {} },
+		"patternProperties": {
+			"p": {},
+			"[0-9]": {}
+		},
+		"additionalProperties": false
+		})");
+	ASSERT_TRUE(v != NULL);
+
+	EXPECT_TRUE(validate_json_plain(R"({"p1": true})", v));  // matched by "properties"
+	EXPECT_TRUE(validate_json_plain(R"({"p2": null})", v));  // matched by "patternProperties": /p/ and /[0-9]/
+	EXPECT_TRUE(validate_json_plain(R"({"a32&o": "foobar"})", v));  // matched by "patternProperties": /[0-9]/
+	EXPECT_FALSE(validate_json_plain(R"({"": []})", v));
+	EXPECT_FALSE(validate_json_plain(R"({"fiddle": 42})", v));
+	EXPECT_TRUE(validate_json_plain(R"({"apple": "pie"})", v));
+}
+
+TEST_F(Json, ObjectPatternPropertiesOverlapping)
+{
+	// Example from json-schema.org
+	v = parse_schema_bare(R"({
+		"type": "object",
+		"patternProperties": {
+			"p": {"type": "boolean"},
+			"[0-9]": {"type": "number"}
+		},
+		"additionalProperties": false
+		})");
+	ASSERT_TRUE(v != NULL);
+
+	EXPECT_TRUE(validate_json_plain(R"({"p2": true})", v));  // matched by "patternProperties": /p/
+	EXPECT_TRUE(validate_json_plain(R"({"p2": 13})", v));  // matched by "patternProperties": /[0-9]/
+	EXPECT_FALSE(validate_json_plain(R"({"p2": "Hello"})", v));
+}
+
 TEST_F(Json, ObjectRequired)
 {
 	v = parse_schema_bare(
@@ -860,6 +924,21 @@ TEST_F(Json, AnyOfSchemaSimple)
 	EXPECT_FALSE(validate_json_plain("[]", v));
 }
 
+TEST_F(Json, AnyOfSchemaRequired)
+{
+	v = parse_schema_bare(
+		R"({
+			"anyOf": [
+				{ "required": [ "a", "c" ] }
+			]
+		})");
+	ASSERT_TRUE(v != NULL);
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "b": "b", "c": "c" })", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "b": "b", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "a": "a" })", v));
+}
+
 TEST_F(Json, AnyOfSchemaMultipleWithGeneric)
 {
 	v = parse_schema_bare(
@@ -940,6 +1019,54 @@ TEST_F(Json, OneOfSchemaMultiple)
 	EXPECT_FALSE(validate_json_plain("[]", v));
 }
 
+TEST_F(Json, OneOfSchemaOverlappedRequired)
+{
+	v = parse_schema_bare(
+		R"({
+			"oneOf": [
+				{ "required": [ "a", "c" ] },
+				{ "required": [ "b", "c" ] }
+			]
+		})");
+	ASSERT_TRUE(v != NULL);
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "c": "c" })", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "b": "b", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "a": "a", "b": "b", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "a": "a" })", v));
+}
+
+
+TEST_F(Json, OneOfSchemaRequired)
+{
+	v = parse_schema_bare(
+		R"({
+			"oneOf": [
+				{ "required": [ "a", "c" ] }
+			]
+		})");
+	ASSERT_TRUE(v != NULL);
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "b": "b", "c": "c" })", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "b": "b", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "a": "a" })", v));
+}
+
+TEST_F(Json, OneOfSchemaOverlapNumber)
+{
+	v = parse_schema_bare(
+		R"({
+			"oneOf": [
+				{ "type": "integer" },
+				{ "type": "number" }
+			]
+		})");
+	ASSERT_TRUE(v != NULL);
+	EXPECT_TRUE(validate_json_plain("3.1415926", v));
+	EXPECT_FALSE(validate_json_plain("42", v));
+	EXPECT_FALSE(validate_json_plain("42.0", v));
+	EXPECT_FALSE(validate_json_plain("true", v));
+}
+
 TEST_F(Json, NotSchemaSimple)
 {
 	v = parse_schema_bare("{\"not\": [{\"type\":\"null\"}]}");
@@ -1006,6 +1133,50 @@ TEST_F(Json, TypeAndAllOfSchema)
 	EXPECT_FALSE(validate_json_plain("\"a\"", v));
 	EXPECT_FALSE(validate_json_plain("{}", v));
 	EXPECT_FALSE(validate_json_plain("[]", v));
+}
+
+TEST_F(Json, NakedRequired)
+{
+	v = parse_schema_bare(
+		R"({ "required": [ "a", "c" ] })");
+	ASSERT_TRUE(v != NULL);
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "b": "b", "c": "c" })", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "b": "b", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "a": "a" })", v));
+}
+
+TEST_F(Json, NakedPatternProperties)
+{
+	v = parse_schema_bare(
+		R"({ "patternProperties": {"^[ac]$" : {}}, "additionalProperties": false })");
+	ASSERT_TRUE(v != NULL);
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "b": "b", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "a": "a", "b": "b", "c": "c" })", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a" })", v));
+}
+
+TEST_F(Json, NakedMinProperties)
+{
+	v = parse_schema_bare(
+		R"({ "minProperties": 1 })");
+	ASSERT_TRUE(v != NULL);
+	EXPECT_FALSE(validate_json_plain(R"({})", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "b": "b", "c": "c" })", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a", "b": "b", "c": "c" })", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a" })", v));
+}
+
+TEST_F(Json, NakedMaxProperties)
+{
+	v = parse_schema_bare(
+		R"({ "maxProperties": 1 })");
+	ASSERT_TRUE(v != NULL);
+	EXPECT_TRUE(validate_json_plain(R"({})", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "b": "b", "c": "c" })", v));
+	EXPECT_FALSE(validate_json_plain(R"({ "a": "a", "b": "b", "c": "c" })", v));
+	EXPECT_TRUE(validate_json_plain(R"({ "a": "a" })", v));
 }
 
 TEST_F(Json, TwoLevelObject)

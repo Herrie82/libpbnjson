@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,15 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef JSCHEMA_TYPES_INTERNAL_H_
 #define JSCHEMA_TYPES_INTERNAL_H_
 
 #include "jparse_types.h"
 #include "jgen_types.h"
+#include "jerror_internal.h"
 #include <yajl/yajl_parse.h>
 
+
+#define URI_SCHEME_RELATIVE "relative:"
 
 typedef struct _Validator Validator;
 typedef struct _UriResolver UriResolver;
@@ -47,6 +48,7 @@ struct __JSAXContext
 	int m_error_code;
 	char *errorDescription;
 	ValidationState *validation_state;
+	jerror *m_error;
 };
 
 jschema_ref jschema_new(void);

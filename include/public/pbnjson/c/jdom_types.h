@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef JDOM_TYPES_H_
 #define JDOM_TYPES_H_
@@ -33,11 +31,11 @@ extern "C" {
 typedef enum {
 	/**
 	 * Make no assumptions about the input - safest.  Use this if you are unsure about the characteristics of the
-	 * relationship between the input & the DOM object that gets generated, use this.
+	 * relationship between the input & the DOM object that gets generated.
 	 */
 	DOMOPT_NOOPT = 0,
 	/**
-	 * Inidicates that the lifetime of the input buffer outlives
+	 * Indicates that the lifetime of the input buffer outlives
 	 * when the DOM object is freed completely.
 	 * NOTE: This includes copies as well.
 	 */
@@ -54,8 +52,7 @@ typedef enum {
 } JDOMOptimization;
 
 /**
- * The combination of both conditions allows us to ensure
- * that it is safe to create the DOM without actually copying anything out of the input string.
+ * The combination of both conditions(#DOMOPT_INPUT_OUTLIVES_DOM, #DOMOPT_INPUT_NOCHANGE) allows us create DOM without copying data from input string.
  */
 #define DOMOPT_INPUT_OUTLIVES_WITH_NOCHANGE (DOMOPT_INPUT_OUTLIVES_DOM | DOMOPT_INPUT_NOCHANGE)
 
@@ -69,6 +66,9 @@ typedef enum {
 	, JFileOptMMap = 1
 } JFileOptimization;
 
+/**
+ * Convenience type representing a bit-wise combination of ::JFileOptimization values.
+ */
 typedef unsigned int JFileOptimizationFlags;
 
 #ifdef __cplusplus

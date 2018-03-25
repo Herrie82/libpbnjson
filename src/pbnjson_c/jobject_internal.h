@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,30 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef JOBJECT_INTERNAL_H_
 #define JOBJECT_INTERNAL_H_
 
+#include <stdbool.h>
 #include <japi.h>
 #include <jtypes.h>
 #include <glib.h>
 #include "jconversion.h"
+#include "jerror.h"
 
 #define ARRAY_BUCKET_SIZE (1 << 4)
 #define OUTSIDE_ARR_BUCKET_RANGE(value) ((value) & (~(ARRAY_BUCKET_SIZE - 1)))
 
+typedef struct _jbuffer {
+	raw_buffer buffer;
+	void (*destructor)(struct _jbuffer *);
+} _jbuffer;
 
 struct jvalue {
 	JValueType m_type;
-	ssize_t m_refCnt;
-	char *m_toString;
-	jdeallocator m_toStringDealloc;
-	raw_buffer m_backingBuffer;
-	bool m_backingBufferMMap;
+	int m_refCnt;
+	_jbuffer m_string;
+	_jbuffer m_file;
 };
 
 typedef struct PJSON_LOCAL jvalue jvalue;
+typedef struct PJSON_LOCAL dom_string_memory_pool dom_string_memory_pool;
 
 typedef struct PJSON_LOCAL {
 	// m_value should always be the first field
@@ -77,6 +80,11 @@ typedef struct PJSON_LOCAL {
 
 _Static_assert(offsetof(jstring, m_value) == 0, "jstring and jstring.m_value should have the same addresses");
 
+typedef struct {
+	jstring m_header;
+	char m_buf[];
+} jstring_inline;
+
 typedef struct PJSON_LOCAL {
 	// m_value should always be the first field
 	jvalue m_value;
@@ -97,6 +105,8 @@ typedef struct PJSON_LOCAL {
 _Static_assert(offsetof(jobject, m_value) == 0, "jobject and jobject.m_value should have the same addresses");
 
 extern PJSON_LOCAL jvalue JNULL;
+
+void PJSON_LOCAL jvalue_init (jvalue_ref val, JValueType type);
 
 PJSON_LOCAL bool jobject_init(jobject *obj);
 
@@ -119,5 +129,17 @@ inline static jstring* jstring_deref(jvalue_ref str) { return (jstring*)str; }
 inline static jarray* jarray_deref(jvalue_ref array) { return (jarray*)array; }
 
 inline static jobject* jobject_deref(jvalue_ref array) { return (jobject*)array; }
+
+void _jbuffer_munmap(_jbuffer *buf);
+void _jbuffer_free(_jbuffer *buf);
+
+jvalue_ref jstring_create_from_pool_internal(dom_string_memory_pool *pool, const char* data, size_t len);
+jvalue_ref jnumber_create_from_pool_internal(dom_string_memory_pool *pool, const char* data, size_t len);
+
+bool j_fopen(const char *file, _jbuffer *buf, jerror **err);
+bool j_fopen2(int fd, _jbuffer *buf, jerror **err);
+
+guint PJSON_LOCAL ObjKeyHash(gconstpointer key);
+gboolean PJSON_LOCAL ObjKeyEqual(gconstpointer a, gconstpointer b);
 
 #endif /* JOBJECT_INTERNAL_H_ */

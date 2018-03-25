@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 
@@ -61,7 +59,7 @@ void definitions_add(Definitions *d, StringSpan *name, Validator *v);
 /** @brief collect schemas for all definitions
  *
  * @param[in] d This object
- * @param[inout] uri_scope Information about current scope and associated resolver
+ * @param[in,out] uri_scope Information about current scope and associated resolver
  */
 void definitions_collect_schemas(Definitions *d, UriScope *uri_scope);
 

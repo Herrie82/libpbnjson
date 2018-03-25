@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "../number_validator.h"
 #include "../validation_api.h"
@@ -56,31 +54,31 @@ protected:
 
 TEST_F(TestNumberValidator, Null)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_NOT_NUMBER, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, Number)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("2", 1)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithNonExclusiveMinConstraintPositive)
 {
 	ASSERT_TRUE(number_validator_add_min_constraint(v, "2"));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("2.1", 3)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithNonExclusiveMinConstraintEquals)
 {
 	ASSERT_TRUE(number_validator_add_min_constraint(v, "2"));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("2", 1)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithNonExclusiveMinConstraintNegative)
@@ -88,14 +86,14 @@ TEST_F(TestNumberValidator, NumberWithNonExclusiveMinConstraintNegative)
 	ASSERT_TRUE(number_validator_add_min_constraint(v, "2"));
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("1.9", 3)), s, this));
 	EXPECT_EQ(VEC_NUMBER_TOO_SMALL, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithExclusiveMinConstraintPositive)
 {
 	ASSERT_TRUE(number_validator_add_min_constraint(v, "2"));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("2.1", 3)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithExclusiveMinConstraintEquals)
@@ -104,7 +102,7 @@ TEST_F(TestNumberValidator, NumberWithExclusiveMinConstraintEquals)
 	number_validator_add_min_exclusive_constraint(v, true);
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("2", 1)), s, this));
 	EXPECT_EQ(VEC_NUMBER_TOO_SMALL, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithExclusiveMinConstraintNegative)
@@ -113,21 +111,21 @@ TEST_F(TestNumberValidator, NumberWithExclusiveMinConstraintNegative)
 	number_validator_add_min_exclusive_constraint(v, true);
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("1.9", 3)), s, this));
 	EXPECT_EQ(VEC_NUMBER_TOO_SMALL, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithNonExclusiveMaxConstraintPositive)
 {
 	ASSERT_TRUE(number_validator_add_max_constraint(v, "2"));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1.9", 3)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithNonExclusiveMaxConstraintEquals)
 {
 	ASSERT_TRUE(number_validator_add_max_constraint(v, "2"));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("2", 1)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithNonExclusiveMaxConstraintNegative)
@@ -135,7 +133,7 @@ TEST_F(TestNumberValidator, NumberWithNonExclusiveMaxConstraintNegative)
 	ASSERT_TRUE(number_validator_add_max_constraint(v, "2"));
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("2.1", 3)), s, this));
 	EXPECT_EQ(VEC_NUMBER_TOO_BIG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithExclusiveMaxConstraintPositive)
@@ -143,7 +141,7 @@ TEST_F(TestNumberValidator, NumberWithExclusiveMaxConstraintPositive)
 	ASSERT_TRUE(number_validator_add_max_constraint(v, "2"));
 	number_validator_add_max_exclusive_constraint(v, true);
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1.9", 3)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithExclusiveMaxConstraintEquals)
@@ -152,7 +150,7 @@ TEST_F(TestNumberValidator, NumberWithExclusiveMaxConstraintEquals)
 	number_validator_add_max_exclusive_constraint(v, true);
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("2", 1)), s, this));
 	EXPECT_EQ(VEC_NUMBER_TOO_BIG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberWithExclusiveMaxConstraintNegative)
@@ -161,7 +159,7 @@ TEST_F(TestNumberValidator, NumberWithExclusiveMaxConstraintNegative)
 	number_validator_add_max_exclusive_constraint(v, true);
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("2.1", 3)), s, this));
 	EXPECT_EQ(VEC_NUMBER_TOO_BIG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberMinMaxConstraintPositive)
@@ -169,7 +167,7 @@ TEST_F(TestNumberValidator, NumberMinMaxConstraintPositive)
 	ASSERT_TRUE(number_validator_add_min_constraint(v, "1"));
 	ASSERT_TRUE(number_validator_add_max_constraint(v, "2"));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1.5", 3)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberMinMaxConstraintNegativeLess)
@@ -178,7 +176,7 @@ TEST_F(TestNumberValidator, NumberMinMaxConstraintNegativeLess)
 	ASSERT_TRUE(number_validator_add_max_constraint(v, "2"));
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("0.5", 3)), s, this));
 	EXPECT_EQ(VEC_NUMBER_TOO_SMALL, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestNumberValidator, NumberMinMaxConstraintNegativeGreater)
@@ -187,5 +185,5 @@ TEST_F(TestNumberValidator, NumberMinMaxConstraintNegativeGreater)
 	ASSERT_TRUE(number_validator_add_max_constraint(v, "2"));
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("2.5", 3)), s, this));
 	EXPECT_EQ(VEC_NUMBER_TOO_BIG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }

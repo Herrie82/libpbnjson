@@ -1,83 +1,75 @@
-/****************************************************************
- * @@@LICENSE
- *
- * Copyright (c) 2014 LG Electronics, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * LICENSE@@@
- ****************************************************************/
+// Copyright (c) 2014-2018 LG Electronics, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  *  @file TestSchemaFromJvalue.cpp
  */
-
-#include <memory>
 
 #include <gtest/gtest.h>
 
 #include "pbnjson.h"
 #include "../../pbnjson_c/validation/validator.h"
 
+#include "TestUtils.hpp"
+
 using namespace std;
 
 namespace {
 
-	template <typename T, typename D>
-	unique_ptr<T, D> mk_ptr(T *p, D d)
-	{
-		return std::unique_ptr<T, D>(p, d);
-	}
-
 	auto schema_str = [](const char *schemaStr) {
 		return mk_ptr(
-			jschema_parse(j_cstr_to_buffer(schemaStr), JSCHEMA_DOM_NOOPT, nullptr),
-			[](jschema_ref x) { jschema_release(&x); }
+			jschema_create(j_cstr_to_buffer(schemaStr), nullptr)
 		);
 	};
 
 	auto jvalue_str = [](const char *jsonStr, jschema_ref schema = jschema_all()) {
-		JSchemaInfo schemaInfo;
-		jschema_info_init(&schemaInfo, schema, NULL, NULL);
-
 		return mk_ptr(
-			jdom_parse(j_cstr_to_buffer(jsonStr), JFileOptNoOpt, &schemaInfo),
-			[](jvalue_ref x) { j_release(&x); }
+			jdom_create(j_cstr_to_buffer(jsonStr), schema, nullptr)
+		);
+	};
+
+	auto schema_jvalue_old = [](jvalue_ref value) {
+		return mk_ptr(
+			jschema_parse_jvalue(value, nullptr, "")
 		);
 	};
 
 	auto schema_jvalue = [](jvalue_ref value) {
 		return mk_ptr(
-			jschema_parse_jvalue(value, nullptr, ""),
-			[](jschema_ref x) { jschema_release(&x); }
+			jschema_jcreate(value, nullptr)
 		);
 	};
 
+	typedef function< decltype(schema_jvalue(nullptr))(jvalue_ref) > schema_jvalue_t;
 } // anonymous namespace
 
 using ::testing::TestWithParam;
 using ::testing::Values;
 using ::testing::Combine;
 
-class SchemaFromJvalue : public TestWithParam<tr1::tuple<const char *, const char *>>
+class SchemaFromJvalue : public TestWithParam<tr1::tuple<const char *, const char *, schema_jvalue_t>>
 { };
 
 TEST_P(SchemaFromJvalue, Basic)
 {
 	auto param = GetParam();
-	static_assert( 2 == tr1::tuple_size<decltype(param)>::value, "param should be a tuple of 2 values" );
+	static_assert( 3 == tr1::tuple_size<decltype(param)>::value, "param should be a tuple of 3 values" );
 	auto schema = get<0>(param);
 	auto json = get<1>(param);
+	auto schema_jvalue_f = get<2>(param);
 
 	auto schema_s = schema_str(schema);
 	ASSERT_TRUE( !!schema_s );
@@ -85,7 +77,7 @@ TEST_P(SchemaFromJvalue, Basic)
 	auto parsed_schema = jvalue_str(schema);
 	ASSERT_TRUE( !!parsed_schema );
 
-	auto schema_j = schema_jvalue(parsed_schema.get());
+	auto schema_j = schema_jvalue_f(parsed_schema.get());
 	ASSERT_TRUE( !!schema_j );
 
 	auto value_s = jvalue_str(json, schema_s.get());
@@ -137,6 +129,10 @@ INSTANTIATE_TEST_CASE_P(Samples, SchemaFromJvalue,
 			"{\"foo\":true}",
 			"{\"foo\":true, \"bar\":40}",
 			"{\"bar\":40}"
+		),
+		Values(
+			schema_jvalue_t(schema_jvalue_old),
+			schema_jvalue_t(schema_jvalue)
 		)
 	)
 );

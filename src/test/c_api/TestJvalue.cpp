@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2013 LG Electronics, Inc.
+// Copyright (c) 2013-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <gtest/gtest.h>
 #include <pbnjson.h>
@@ -29,12 +27,13 @@ unique_ptr<jvalue, function<void(jvalue_ref &)>> mk_ptr(jvalue_ref v)
 	return jv;
 }
 
-class JvalueEqual
+class JvalueTest
 	: public testing::Test
 {
 protected:
 	virtual void SetUp()
 	{
+		invalid = jinvalid();
 		null = jnull();
 		boolean = jboolean_create(false);
 		str = jstring_create("hello");
@@ -52,6 +51,7 @@ protected:
 		j_release(&obj);
 	}
 
+	jvalue_ref invalid;
 	jvalue_ref null;
 	jvalue_ref boolean;
 	jvalue_ref str;
@@ -60,7 +60,7 @@ protected:
 	jvalue_ref obj;
 };
 
-TEST_F(JvalueEqual, Null)
+TEST_F(JvalueTest, Null)
 {
 	jvalue_ref null2 = jnull();
 
@@ -71,9 +71,20 @@ TEST_F(JvalueEqual, Null)
 	ASSERT_FALSE(jvalue_equal(null, num));
 	ASSERT_FALSE(jvalue_equal(null, arr));
 	ASSERT_FALSE(jvalue_equal(null, obj));
+
+	EXPECT_GT(0, jvalue_compare(invalid, null));
+	EXPECT_EQ(0, jvalue_compare(invalid, invalid));
+	EXPECT_EQ(0, jvalue_compare(null, null));
+	EXPECT_EQ(0, jvalue_compare(null, null2));
+	EXPECT_LT(0, jvalue_compare(null, invalid));
+	ASSERT_GT(0, jvalue_compare(null, boolean));
+	ASSERT_GT(0, jvalue_compare(null, str));
+	ASSERT_GT(0, jvalue_compare(null, num));
+	ASSERT_GT(0, jvalue_compare(null, arr));
+	ASSERT_GT(0, jvalue_compare(null, obj));
 }
 
-TEST_F(JvalueEqual, Boolean)
+TEST_F(JvalueTest, Boolean)
 {
 	auto boolean2 = mk_ptr(jboolean_create(false));
 	auto boolean3 = mk_ptr(jboolean_create(true));
@@ -86,9 +97,20 @@ TEST_F(JvalueEqual, Boolean)
 	ASSERT_FALSE(jvalue_equal(boolean, num));
 	ASSERT_FALSE(jvalue_equal(boolean, arr));
 	ASSERT_FALSE(jvalue_equal(boolean, obj));
+
+	EXPECT_EQ(0, jvalue_compare(boolean, boolean));
+	EXPECT_EQ(0, jvalue_compare(boolean, boolean2.get()));
+	EXPECT_GT(0, jvalue_compare(boolean, boolean3.get()));
+	EXPECT_GT(0, jvalue_compare(invalid, boolean));
+	EXPECT_LT(0, jvalue_compare(boolean, invalid));
+	ASSERT_LT(0, jvalue_compare(boolean, null));
+	ASSERT_GT(0, jvalue_compare(boolean, str));
+	ASSERT_GT(0, jvalue_compare(boolean, num));
+	ASSERT_GT(0, jvalue_compare(boolean, arr));
+	ASSERT_GT(0, jvalue_compare(boolean, obj));
 }
 
-TEST_F(JvalueEqual, String)
+TEST_F(JvalueTest, String)
 {
 	auto str2 = mk_ptr(jstring_create("hello"));
 	auto str3 = mk_ptr(jstring_create("world"));
@@ -101,9 +123,21 @@ TEST_F(JvalueEqual, String)
 	ASSERT_FALSE(jvalue_equal(str, num));
 	ASSERT_FALSE(jvalue_equal(str, arr));
 	ASSERT_FALSE(jvalue_equal(str, obj));
+
+	EXPECT_EQ(0, jvalue_compare(str, str));
+	EXPECT_EQ(0, jvalue_compare(str, str2.get()));
+	EXPECT_GT(0, jvalue_compare(str, str3.get()));
+	EXPECT_LT(0, jvalue_compare(str3.get(), str));
+	EXPECT_GT(0, jvalue_compare(invalid, str));
+	EXPECT_LT(0, jvalue_compare(str, invalid));
+	ASSERT_LT(0, jvalue_compare(str, null));
+	ASSERT_LT(0, jvalue_compare(str, boolean));
+	ASSERT_LT(0, jvalue_compare(str, num));
+	ASSERT_GT(0, jvalue_compare(str, arr));
+	ASSERT_GT(0, jvalue_compare(str, obj));
 }
 
-TEST_F(JvalueEqual, Number)
+TEST_F(JvalueTest, Number)
 {
 	auto num2 = mk_ptr(jnumber_create(J_CSTR_TO_BUF("0")));
 	auto num3 = mk_ptr(jnumber_create(J_CSTR_TO_BUF("0.1")));
@@ -120,9 +154,24 @@ TEST_F(JvalueEqual, Number)
 	ASSERT_FALSE(jvalue_equal(num, str));
 	ASSERT_FALSE(jvalue_equal(num, arr));
 	ASSERT_FALSE(jvalue_equal(num, obj));
+
+	EXPECT_EQ(0, jvalue_compare(num, num));
+	EXPECT_EQ(0, jvalue_compare(num, num2.get()));
+	EXPECT_GT(0, jvalue_compare(num, num3.get()));
+	EXPECT_LT(0, jvalue_compare(num3.get(), num));
+	EXPECT_EQ(0, jvalue_compare(num, num4.get()));
+	EXPECT_GT(0, jvalue_compare(num, num5.get()));
+	EXPECT_LT(0, jvalue_compare(num5.get(), num));
+	EXPECT_GT(0, jvalue_compare(invalid, num));
+	EXPECT_LT(0, jvalue_compare(num, invalid));
+	ASSERT_LT(0, jvalue_compare(num, null));
+	ASSERT_LT(0, jvalue_compare(num, boolean));
+	ASSERT_GT(0, jvalue_compare(num, str));
+	ASSERT_GT(0, jvalue_compare(num, arr));
+	ASSERT_GT(0, jvalue_compare(num, obj));
 }
 
-TEST_F(JvalueEqual, Array)
+TEST_F(JvalueTest, Array)
 {
 	jarray_append(arr, jnull());
 	auto arr2 = mk_ptr(jarray_create(NULL));
@@ -144,9 +193,24 @@ TEST_F(JvalueEqual, Array)
 	ASSERT_FALSE(jvalue_equal(arr, str));
 	ASSERT_FALSE(jvalue_equal(arr, num));
 	ASSERT_FALSE(jvalue_equal(arr, obj));
+
+	EXPECT_EQ(0, jvalue_compare(arr, arr));
+	EXPECT_LT(0, jvalue_compare(arr, arr2.get()));
+	EXPECT_EQ(0, jvalue_compare(arr, arr3.get()));
+	EXPECT_GT(0, jvalue_compare(arr, arr4.get()));
+	EXPECT_GT(0, jvalue_compare(arr, arr5.get()));
+	EXPECT_LT(0, jvalue_compare(arr4.get() , arr5.get()));
+	EXPECT_LT(0, jvalue_compare(arr4.get() , arr3.get()));
+	EXPECT_GT(0, jvalue_compare(invalid, arr));
+	EXPECT_LT(0, jvalue_compare(arr, invalid));
+	ASSERT_LT(0, jvalue_compare(arr, null));
+	ASSERT_LT(0, jvalue_compare(arr, boolean));
+	ASSERT_LT(0, jvalue_compare(arr, num));
+	ASSERT_LT(0, jvalue_compare(arr, str));
+	ASSERT_GT(0, jvalue_compare(arr, obj));
 }
 
-TEST_F(JvalueEqual, Object)
+TEST_F(JvalueTest, Object)
 {
 	jobject_put(obj, J_CSTR_TO_JVAL("a"), jnumber_create_i32(0));
 	jobject_put(obj, J_CSTR_TO_JVAL("b"), jstring_create("hello"));
@@ -165,6 +229,12 @@ TEST_F(JvalueEqual, Object)
 	jobject_put(obj6.get(), J_CSTR_TO_JVAL("a"), jnumber_create_i32(0));
 	jobject_put(obj6.get(), J_CSTR_TO_JVAL("b"), jstring_create("hello"));
 	jobject_put(obj6.get(), J_CSTR_TO_JVAL("c"), jnull());
+	auto obj7 = mk_ptr(jobject_create());
+	jobject_put(obj7.get(), J_CSTR_TO_JVAL("a"), jnumber_create_i32(0));
+	jobject_put(obj7.get(), J_CSTR_TO_JVAL("b"), jstring_create("hello"));
+	auto obj8 = mk_ptr(jobject_create());
+	jobject_put(obj8.get(), J_CSTR_TO_JVAL("a0.0b"), jnumber_create_i32(0));
+	jobject_put(obj8.get(), J_CSTR_TO_JVAL("b/0\0a"), jstring_create("hello"));
 
 	ASSERT_TRUE(jvalue_equal(obj, obj));
 	ASSERT_FALSE(jvalue_equal(obj, obj2.get()));
@@ -177,4 +247,20 @@ TEST_F(JvalueEqual, Object)
 	ASSERT_FALSE(jvalue_equal(obj, str));
 	ASSERT_FALSE(jvalue_equal(obj, num));
 	ASSERT_FALSE(jvalue_equal(obj, arr));
+
+	EXPECT_EQ(0, jvalue_compare(obj, obj));
+	EXPECT_EQ(0, jvalue_compare(obj, obj7.get()));
+	EXPECT_LT(0, jvalue_compare(obj, obj2.get()));
+	EXPECT_EQ(0, jvalue_compare(obj, obj3.get()));
+	EXPECT_GT(0, jvalue_compare(obj, obj4.get()));
+	EXPECT_GT(0, jvalue_compare(obj, obj5.get()));
+	EXPECT_GT(0, jvalue_compare(obj, obj6.get()));
+	EXPECT_GT(0, jvalue_compare(obj, obj8.get()));
+	EXPECT_GT(0, jvalue_compare(invalid, obj));
+	EXPECT_LT(0, jvalue_compare(obj, invalid));
+	ASSERT_LT(0, jvalue_compare(obj, null));
+	ASSERT_LT(0, jvalue_compare(obj, boolean));
+	ASSERT_LT(0, jvalue_compare(obj, str));
+	ASSERT_LT(0, jvalue_compare(obj, num));
+	ASSERT_LT(0, jvalue_compare(obj, arr));
 }

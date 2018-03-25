@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "validation_api.h"
 #include "../yajl_compat.h"
@@ -160,9 +158,6 @@ bool validate_json_n(char const *json, size_t json_len, Validator *v,
 	ctxt.yh = yajl_alloc(&callbacks, &yajl_opts, NULL, &ctxt);
 #else
 	ctxt.yh = yajl_alloc(&callbacks, NULL, &ctxt);
-
-	yajl_config(ctxt.yh, yajl_allow_comments, allow_comments ? 1 : 0);
-	yajl_config(ctxt.yh, yajl_dont_validate_strings, 1);
 #endif // YAJL_VERSION
 
 	if (!ctxt.yh)
@@ -170,6 +165,11 @@ bool validate_json_n(char const *json, size_t json_len, Validator *v,
 		validation_state_clear(&validation_state);
 		return false;
 	}
+
+#if YAJL_VERSION >= 20000
+	yajl_config(ctxt.yh, yajl_allow_comments, allow_comments ? 1 : 0);
+	yajl_config(ctxt.yh, yajl_dont_validate_strings, 1);
+#endif
 
 	yajl_status result = yajl_parse(ctxt.yh, (const unsigned char *) json, json_len);
 #if YAJL_VERSION < 20000

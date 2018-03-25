@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "error_code.h"
 
@@ -141,6 +139,12 @@ char const *SchemaGetErrorMessage(int code)
 		return "'properties' object values should be objects";
 	case SEC_ADDITIONAL_PROPERTIES_FORMAT:
 		return "'additionalProperties' should be boolean or object";
+	case SEC_PATTERN_PROPERTIES_FORMAT:
+		return "'patternProperties' should be object";
+	case SEC_PATTERN_PROPERTIES_EMPTY:
+		return "'patternProperties' cannot be empty";
+	case SEC_PATTERN_PROPERTIES_REGEX:
+		return "'patternProperties' regex error";
 	case SEC_MAX_PROPERTIES_FORMAT:
 		return "'maxProperties' should be number";
 	case SEC_MIN_PROPERTIES_FORMAT:

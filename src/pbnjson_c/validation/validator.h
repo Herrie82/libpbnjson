@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 
@@ -30,6 +28,7 @@ extern "C" {
 typedef struct _ValidationEvent ValidationEvent;
 typedef struct _ValidationState ValidationState;
 typedef struct _ObjectProperties ObjectProperties;
+typedef struct _ObjectPatternProperties ObjectPatternProperties;
 typedef struct _ObjectAdditionalProperties ObjectAdditionalProperties;
 typedef struct _ObjectRequired ObjectRequired;
 typedef struct _ArrayItems ArrayItems;
@@ -157,6 +156,7 @@ typedef struct _ValidatorVtable
 	Validator* (*set_object_required)(Validator *v, ObjectRequired *p);
 	Validator* (*set_object_max_properties)(Validator *v, size_t max);
 	Validator* (*set_object_min_properties)(Validator *v, size_t min);
+	Validator* (*set_object_pattern_properties)(Validator *v, ObjectPatternProperties *p);
 	Validator* (*set_array_items)(Validator *v, ArrayItems *a);
 	Validator* (*set_array_additional_items)(Validator *v, Validator *additional);
 	Validator* (*set_array_max_items)(Validator *v, size_t maxItems);
@@ -266,6 +266,7 @@ Validator* validator_set_object_additional_properties(Validator *v, Validator *a
 Validator* validator_set_object_required(Validator *v, ObjectRequired *p);
 Validator* validator_set_object_max_properties(Validator *v, size_t max);
 Validator* validator_set_object_min_properties(Validator *v, size_t min);
+Validator* validator_set_object_pattern_properties(Validator *v, ObjectPatternProperties *p);
 Validator* validator_set_array_items(Validator *v, ArrayItems *a);
 Validator* validator_set_array_additional_items(Validator *v, Validator *additional);
 Validator* validator_set_array_max_items(Validator *v, size_t maxItems);

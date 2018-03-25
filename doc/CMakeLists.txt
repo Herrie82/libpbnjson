@@ -1,6 +1,4 @@
-# @@@LICENSE
-#
-#      Copyright (c) 2009-2013 LG Electronics, Inc.
+# Copyright (c) 2009-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,12 +10,12 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License looks.
+# limitations under the License.
 #
-# LICENSE@@@
+# SPDX-License-Identifier: Apache-2.0
 
 set(DOC_DIRNAME pbnjson-${WEBOS_API_VERSION})
-set(PJ_DOC_OUTPUT ${WEBOS_BINARY_DOCUMENTATION_DIR}/${CMAKE_PROJECT_NAME}/html)
+set(PJ_DOC_OUTPUT ${WEBOS_BINARY_DOCUMENTATION_DIR}/${CMAKE_PROJECT_NAME})
 set(PJ_DOC_C_API_OUT ${PJ_DOC_OUTPUT}/c_api)
 set(PJ_DOC_CXX_API_OUT ${PJ_DOC_OUTPUT}/cxx_api)
 set(PJ_DOC_C_SRC_OUT ${PJ_DOC_OUTPUT}/c_internal)

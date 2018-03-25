@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef J_SCHEMA_H_
 #define J_SCHEMA_H_
@@ -23,6 +21,7 @@
 #include "jcallbacks.h"
 #include "jschema_types.h"
 #include "jtypes.h"
+#include "jerror.h"
 #include "compiler/pure_attribute.h"
 #include "compiler/nonnull_attribute.h"
 
@@ -72,14 +71,12 @@ PJSON_API jschema_ref jschema_duplicate(jschema_ref schema) NON_NULL(1);
  * whether or not you need it.  After a successful call to this method, the schema is guaranteed to be
  * immutable & thus the same reference will be thread-safe.
  *
- * NOTE: For now, this API is unexposed - please discuss with the maintainer about exposing.
- *
- * @param schema_info The schema to resolve.
+ * @param schema The schema to resolve.
+ * @param resolver Schema resolver.
  * @return True if the schema resolved fully, false if some error occurred.
  *         If some error occurred, you will typically want to remember to free the reference before-hand.
- * @deprecated Will be removed in 3.0
  */
-PJSON_API bool jschema_resolve(JSchemaInfoRef schema_info) NON_NULL(1);
+PJSON_API bool jschema_resolve(jschema_ref schema, JSchemaResolverRef resolver) NON_NULL(1, 2);
 
 /**
  * Resolves any and all external references.  This is an expensive operation and you should consider carefully
@@ -92,6 +89,8 @@ PJSON_API bool jschema_resolve(JSchemaInfoRef schema_info) NON_NULL(1);
  * @param resolver Schema resolver.
  * @return True if the schema resolved fully, false if some error occurred.
  *         If some error occurred, you will typically want to remember to free the reference before-hand.
+ *
+ * @deprecated Will be removed in 3.0, use jschema_resolve
  */
 PJSON_API bool jschema_resolve_ex(jschema_ref schema, JSchemaResolverRef resolver) NON_NULL(1, 2);
 
@@ -114,11 +113,11 @@ PJSON_API void jschema_release(jschema_ref *schema) NON_NULL(1);
  *                   validated
  * @return
  *
+ * @deprecated Will be removed in 3.0, use jschema_create
  * @note Be carefully while using x-references in files
  * @see jschema_parse
  */
 PJSON_API jschema_ref jschema_parse_ex(raw_buffer input, JSchemaOptimizationFlags inputOpt, JSchemaInfoRef schemaInfo) NON_NULL(3);
-
 
 /**
  * Returns the "DOM" structure of the schema that is ready for validation
@@ -126,10 +125,11 @@ PJSON_API jschema_ref jschema_parse_ex(raw_buffer input, JSchemaOptimizationFlag
  *
  * Javascript-style comments are allowed within schemas.
  *
- * @param file - The file path to the schema to use for validation.
- * @param errorHandler - The error handlers to use when parsing the schema dom.
+ * @param file The file path to the schema to use for validation.
+ * @param errorHandler The error handlers to use when parsing the schema dom.
  * @return A reference to a schema that can be used, or NULL if there was an error.
  *
+ * @deprecated Will be removed in 3.0, use jschema_fcreate
  * @see jschema_parse_ex
  */
 PJSON_API jschema_ref jschema_parse_file(const char *file, JErrorCallbacksRef errorHandler);
@@ -140,13 +140,13 @@ PJSON_API jschema_ref jschema_parse_file(const char *file, JErrorCallbacksRef er
  *
  * Javascript-style comments are allowed within schemas.
  *
- * @param file - The file path to the schema to use for validation.
- * @param rootScope - Base URI for relative references.
- * @param errorHandler - The error handlers to use when parsing the schema dom.
- * @param resolver - External URI resolver.
+ * @param file The file path to the schema to use for validation.
+ * @param rootScope Base URI for relative references.
+ * @param errorHandler The error handlers to use when parsing the schema dom.
+ * @param resolver External URI resolver.
  * @return A reference to a schema that can be used, or NULL if there was an error.
  *
- * @note Be carefully while using x-references in files
+ * @deprecated Will be removed in 3.0, use jschema_fcreate and jschema_resolve
  * @see jschema_parse_ex
  */
 PJSON_API jschema_ref jschema_parse_file_resolve(const char *file, const char *rootScope, JErrorCallbacksRef errorHandler, JSchemaResolverRef resolver);
@@ -155,11 +155,12 @@ PJSON_API jschema_ref jschema_parse_file_resolve(const char *file, const char *r
  * Returns the "DOM" structure of the schema that is ready for validation
  * by the parser layer.
  *
- * @param input - The input to generate a schema from - must be a valid JSON object schema.
- * @param errorHandler - The error handlers to use when parsing the schema dom.
- * @param root_scope - base URI for relative references
+ * @param input The input to generate a schema from - must be a valid JSON object schema.
+ * @param errorHandler The error handlers to use when parsing the schema dom.
+ * @param root_scope base URI for relative references
  * @return A reference to a schema that can be used, or NULL if there was an error.
  *
+ * @deprecated Will be removed in 3.0, use jschema_jcreate
  * @see jschema_parse_ex
  */
 PJSON_API jschema_ref jschema_parse_jvalue(jvalue_ref input, JErrorCallbacksRef errorHandler, const char *root_scope);
@@ -173,11 +174,12 @@ PJSON_API jschema_ref jschema_parse_jvalue(jvalue_ref input, JErrorCallbacksRef 
  *
  * Javascript-style comments are allowed within schemas.
  *
- * @param input - The input to generate a schema from - must be a valid JSON object schema.
- * @param inputOpt - The optimization flags to enable when parsing the schema
- * @param errorHandler - The error handlers to use when parsing the schema dom.
+ * @param input The input to generate a schema from - must be a valid JSON object schema.
+ * @param inputOpt The optimization flags to enable when parsing the schema
+ * @param errorHandler The error handlers to use when parsing the schema dom.
  * @return A reference to a schema that can be used, or NULL if there was an error.
  *
+ * @deprecated Will be removed in 3.0, use jschema_create
  * @see jschema_parse_ex
  */
 PJSON_API jschema_ref jschema_parse(raw_buffer input, JSchemaOptimizationFlags inputOpt, JErrorCallbacksRef errorHandler);
@@ -191,8 +193,36 @@ PJSON_API jschema_ref jschema_parse(raw_buffer input, JSchemaOptimizationFlags i
  * @param schema The schema to use for validation
  * @param resolver The resolver callback to handle external references within the schema
  * @param errHandler The error handler to
+ * @deprecated Will be removed in 3.0 use strictly jschema_ref
  */
 PJSON_API void jschema_info_init(JSchemaInfoRef schemaInfo, jschema_ref schema, JSchemaResolverRef resolver, JErrorCallbacksRef errHandler);
+
+/**
+ * Creates DOM structure of the schema from a raw string.
+ *
+ *  @param input The input to use for the schema
+ *  @param err pbnjson error information
+ *  @return A reference to the schema that can be used, or NULL, if there was an error
+ */
+PJSON_API jschema_ref jschema_create(raw_buffer input, jerror **err);
+
+/**
+ * Creates DOM structure of the schema from a JSON object.
+ *
+ * @param input The input to generate a schema from - must be a valid JSON object schema
+ * @param err pbnjson error information
+ * @return A reference to the schema that can be used, or NULL, if there was an error
+ */
+PJSON_API jschema_ref jschema_jcreate(jvalue_ref input, jerror **err);
+
+/**
+ * Creates DOM structure of the schema from a file.
+ *
+ * @param file The file path to the schema
+ * @param err pbnjson error information
+ * @return A reference to the schema that can be used, or NULL, if there was an error
+ */
+PJSON_API jschema_ref jschema_fcreate(const char *file, jerror **err);
 
 #ifdef __cplusplus
 }

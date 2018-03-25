@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "string_validator.h"
 #include "pattern.h"
@@ -44,14 +42,14 @@ static bool _check_conditions(StringValidator *v, ValidationEvent const *e,
 	}
 
 	if (v->min_length >= 0 &&
-	    e->value.string.len < v->min_length)
+	    e->value.string.len < (size_t)v->min_length)
 	{
 		validation_state_notify_error(s, VEC_STRING_TOO_SHORT, c);
 		return false;
 	}
 
 	if (v->max_length >= 0 &&
-	    e->value.string.len > v->max_length)
+	    e->value.string.len > (size_t)v->max_length)
 	{
 		validation_state_notify_error(s, VEC_STRING_TOO_LONG, c);
 		return false;

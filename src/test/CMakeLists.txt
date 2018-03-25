@@ -1,6 +1,4 @@
-# @@@LICENSE
-#
-#      Copyright (c) 2009-2013 LG Electronics, Inc.
+# Copyright (c) 2009-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,16 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# LICENSE@@@
+# SPDX-License-Identifier: Apache-2.0
 
 include(CheckIncludeFileCXX)
+
+include(UseSanitizers.cmake)
+
+# Find JSON_C for comparison benchmarks
+pkg_check_modules(JSON_C json-c)
+if (JSON_C_FOUND)
+        add_definitions(-DHAVE_JSON_C)
+	message(STATUS "Configuring tests with json-c for benchmarks comparison")
+	include_directories(${JSON_C_INCLUDE_DIRS} )
+endif()
 
 # for some reason there's some kind of conflict (HAVE_CXXABI_H refuses to get set)
 check_include_file_cxx(cxxabi.h HAVE_CXXABI_H_)
 check_include_files(execinfo.h HAVE_EXECINFO_H)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/execinfo.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/pjson_execinfo.h)
 
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+webos_add_compiler_flags(ALL -Wall -std=c++11 -Wno-deprecated-declarations)
+
+include_directories(${WEBOS_GTEST_INCLUDES})
 
 if(APPLE)
 	# Problems w/ 32-bit vs 64-bit on snow leopard w/ Qt
@@ -33,9 +43,7 @@ if(APPLE)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
 endif()
 
-# Google Test setup
-webos_use_gtest()
-
+add_subdirectory(internal)
 add_subdirectory(c_api)
 add_subdirectory(cxx_api)
 

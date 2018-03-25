@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <gtest/gtest.h>
 #include <pbnjson.h>
@@ -24,7 +22,7 @@ using namespace std;
 
 namespace {
 
-void ParsePbnjson(raw_buffer const &input, JDOMOptimizationFlags opt, jschema_ref schema)
+void ParsePbnjsonOld(raw_buffer const &input, JDOMOptimizationFlags opt, jschema_ref schema)
 {
 	JSchemaInfo schemaInfo;
 	jschema_info_init(&schemaInfo, schema, NULL, NULL);
@@ -32,9 +30,14 @@ void ParsePbnjson(raw_buffer const &input, JDOMOptimizationFlags opt, jschema_re
 	ASSERT_TRUE(jsax_parse(NULL, input, &schemaInfo));
 }
 
+void ParsePbnjson(raw_buffer const &input, jschema_ref schema)
+{
+	ASSERT_TRUE(jsax_parse_with_callbacks(input, schema, NULL, NULL, NULL));
+}
+
 void BenchmarkSchemas(raw_buffer input, vector<string>& schema_jsons)
 {
-	cout << "Parsing JSON (MBps): " << endl << string(input.m_str, input.m_len) << endl << endl;
+	cout << "Parsing JSON (iter/s): " << endl << string(input.m_str, input.m_len) << endl << endl;
 	for (auto const &sj : schema_jsons)
 	{
 		raw_buffer schema_str;
@@ -49,12 +52,20 @@ void BenchmarkSchemas(raw_buffer input, vector<string>& schema_jsons)
 		ASSERT_TRUE(schema.get());
 
 		cout << "with schema: " << (sj.empty() ? "schema_all()" : sj) << endl;
+		double s_pbnjson_old = BenchmarkPerform([&](size_t n)
+			{
+				for (; n > 0; --n)
+					ParsePbnjsonOld(input, DOMOPT_NOOPT, schema.get());
+			});
 		double s_pbnjson = BenchmarkPerform([&](size_t n)
 			{
 				for (; n > 0; --n)
-					ParsePbnjson(input, DOMOPT_NOOPT, schema.get());
+					ParsePbnjson(input, schema.get());
 			});
-		cout << ConvertToMBps(schema_str.m_len, s_pbnjson) << endl << endl;
+		cout << fixed << setprecision(3)
+		     << "old interface: " << 1/s_pbnjson_old << endl
+		     << "new interface: " << 1/s_pbnjson << endl
+		     << endl;
 	}
 }
 } //namespace;

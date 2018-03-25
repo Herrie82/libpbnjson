@@ -1,6 +1,4 @@
-# @@@LICENSE
-#
-#      Copyright (c) 2009-2014 LG Electronics, Inc.
+# Copyright (c) 2009-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# LICENSE@@@
+# SPDX-License-Identifier: Apache-2.0
 
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
+
+set(LEMON_WITH_LINE TRUE CACHE BOOL "Strip lemon generated #line statements")
+set(LEMON_WITH_LINE_TRUE_ARGS "")
+set(LEMON_WITH_LINE_FALSE_ARGS "-l${CMAKE_CURRENT_BINARY_DIR}/json_schema_grammar.c")
 
 add_custom_target(
 	json_schema_grammar echo "Creating json_schema_grammar.c"
@@ -26,6 +28,7 @@ add_custom_target(
 add_custom_command(
 	SOURCE json_schema_grammar.y
 	COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/apply_lemon.sh
+		${LEMON_WITH_LINE_${LEMON_WITH_LINE}_ARGS}
 		${LEMON}
 		${CMAKE_CURRENT_BINARY_DIR}
 		${CMAKE_CURRENT_SOURCE_DIR}
@@ -89,6 +92,7 @@ add_library(
 	number_feature.c
 	number_validator.c
 	string_validator.c
+	object_pattern_properties.c
 	object_properties.c
 	object_required.c
 	object_validator.c
@@ -116,7 +120,7 @@ target_link_libraries(
 	${GLIB2_LDFLAGS} ${YAJL_LDFLAGS} ${URIPARSER_LDFLAGS} ${GMP_LIBRARY}
 	)
 
-if(WITH_TESTS)
+if(WEBOS_CONFIG_BUILD_TESTS)
 	add_subdirectory(test)
 	enable_testing()
 endif()

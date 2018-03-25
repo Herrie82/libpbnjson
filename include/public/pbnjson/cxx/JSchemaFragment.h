@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef JSCHEMA_FRAGMENT_H_
 #define JSCHEMA_FRAGMENT_H_
 
 #include "JSchema.h"
 #include <string>
+#include "../c/compiler/deprecated_attribute.h"
 
 namespace pbnjson {
 
@@ -37,19 +36,36 @@ namespace pbnjson {
  * DO NOT INLINE SCHEMA INTO CODE UNLESS YOU HAVE A VERY GOOD REASON.  IT IS HIGHLY
  * UNLIKELY YOU HAVE A VERY GOOD REASON.
  * </palm-internal-comment>
+ *
+ * @deprecated Use JSchema::fromString.
  */
 class PJSONCXX_API JSchemaFragment : public JSchema
 {
 private:
+	/**
+	 * Create new C schema from the fragment
+	 *
+	 * \param fragment string fragment representation
+	 */
 	jschema_ref createSchema(const std::string &fragment);
 
 public:
+	/**
+	 * Create new schema fragment from the string
+	 *
+	 * \param fragment string fragment representation
+	 */
 	JSchemaFragment(const std::string& fragment);
+
+	/**
+	 * Create a copy of the schema fragment
+	 *
+	 * \param other Source schema fragment
+	 */
 	JSchemaFragment(const JSchemaFragment& other);
 	~JSchemaFragment();
-};
+} /* TODO DEPRECATED_API_MSG("Use JSchema::fromString") //smartkey-hun failed */;
 
 }
 
 #endif /* JSCHEMA_FRAGMENT_H_ */
-

@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <gtest/gtest.h>
 #include <pbnjson.h>
@@ -78,7 +76,7 @@ TEST(TestDOM, ObjectSimple)
 	EXPECT_TRUE(jobject_get_exists(simpleObject, J_CSTR_TO_BUF("def"), &jnum));
 	int32_t num(-1);
 	EXPECT_EQ(jnumber_get_i32(jnum, &num), CONV_OK);
-	EXPECT_EQ(num, 5463);
+	EXPECT_EQ(5463, num);
 }
 
 TEST(TestDOM, ObjectMisuse)
@@ -133,7 +131,7 @@ TEST(TestDOM, ObjectComplex)
 	// for string literals under C.
 	jvalue_ref complexObject = manage (jobject_create_var(
 		// J_CSTR_TO_JVAL or J_CSTR_TO_JVAL is interchangeable only if you use string literals.
-		// J_CSTR_TO_JVAL is going to be faster as your string gets larger
+		// J_CSTR_TO_JVAL is going to be faster as the string gets larger
 		jkeyval(J_CSTR_TO_JVAL("bool1"), jboolean_create(true)),
 		jkeyval(J_CSTR_TO_JVAL("bool2"), jboolean_create(false)),
 		jkeyval(J_CSTR_TO_JVAL("numi32_1"), jnumber_create_i32(0)),
@@ -182,7 +180,7 @@ TEST(TestDOM, ObjectComplex)
 	EXPECT_TRUE(jis_number(jnum));
 	int32_t i32(-1);
 	EXPECT_EQ(jnumber_get_i32(jnum, &i32), CONV_OK);
-	EXPECT_EQ(i32, 0);
+	EXPECT_EQ(0, i32);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi32_2"));
 	EXPECT_TRUE(jis_number(jnum));
@@ -192,25 +190,25 @@ TEST(TestDOM, ObjectComplex)
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi32_3"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_i32(jnum, &i32), CONV_OK);
-	EXPECT_EQ(i32, 12345323);
+	EXPECT_EQ(12345323, i32);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi64_1"));
 	EXPECT_TRUE(jis_number(jnum));
-	EXPECT_EQ(jnumber_get_i32(jnum, &i32), CONV_POSITIVE_OVERFLOW);
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(jnumber_get_i32(jnum, &i32)));
 	int64_t i64(-1);
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_OK);
 	EXPECT_EQ(i64, maxInt32 + 1);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi64_2"));
 	EXPECT_TRUE(jis_number(jnum));
-	EXPECT_EQ(jnumber_get_i32(jnum, &i32), CONV_NEGATIVE_OVERFLOW);
+	EXPECT_TRUE(CONV_HAS_NEGATIVE_OVERFLOW(jnumber_get_i32(jnum, &i32)));
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_OK);
 	EXPECT_EQ(i64, minInt32 - 1);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi64_3"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_OK);
-	EXPECT_EQ(i64, 0);
+	EXPECT_EQ(0, i64);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi64_4"));
 	EXPECT_TRUE(jis_number(jnum));
@@ -218,49 +216,49 @@ TEST(TestDOM, ObjectComplex)
 	EXPECT_EQ(i64, maxDblPrecision);
 	double dbl;
 	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_OK);
-	EXPECT_EQ(dbl, (double)maxDblPrecision);
+	EXPECT_DOUBLE_EQ(dbl, (double)maxDblPrecision);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi64_5"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_OK);
-	EXPECT_EQ(i64, minDblPrecision);
+	EXPECT_DOUBLE_EQ(i64, minDblPrecision);
 	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_OK);
-	EXPECT_EQ(dbl, (double)minDblPrecision);
+	EXPECT_DOUBLE_EQ(dbl, (double)minDblPrecision);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi64_6"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_OK);
-	EXPECT_EQ(i64, positiveOutsideDblPrecision);
+	EXPECT_DOUBLE_EQ(i64, positiveOutsideDblPrecision);
 	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_PRECISION_LOSS);
-	EXPECT_EQ(dbl, (double)positiveOutsideDblPrecision);
+	EXPECT_DOUBLE_EQ(dbl, (double)positiveOutsideDblPrecision);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numi64_7"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_OK);
-	EXPECT_EQ(i64, negativeOutsideDblPrecision);
+	EXPECT_DOUBLE_EQ(i64, negativeOutsideDblPrecision);
 	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_PRECISION_LOSS);
-	EXPECT_EQ(dbl, (double)negativeOutsideDblPrecision);
+	EXPECT_DOUBLE_EQ(dbl, (double)negativeOutsideDblPrecision);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numf64_1"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_OK);
-	EXPECT_EQ(dbl, 0.45642156489);
+	EXPECT_DOUBLE_EQ(dbl, 0.45642156489);
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_PRECISION_LOSS);
-	EXPECT_EQ(i64, 0);
+	EXPECT_DOUBLE_EQ(i64, 0);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numf64_2"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_OK);
-	EXPECT_EQ(dbl, -54897864.14);
+	EXPECT_DOUBLE_EQ(dbl, -54897864.14);
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_PRECISION_LOSS);
-	EXPECT_EQ(i64, -54897864);
+	EXPECT_DOUBLE_EQ(i64, -54897864);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numf64_3"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_OK);
-	EXPECT_EQ(dbl, -54897864);
+	EXPECT_DOUBLE_EQ(dbl, -54897864);
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_OK);
-	EXPECT_EQ(i64, -54897864);
+	EXPECT_DOUBLE_EQ(i64, -54897864);
 
 	jnum = jobject_get(complexObject, J_CSTR_TO_BUF("numf64_4"));
 	EXPECT_TRUE(jis_null(jnum));  // + inf
@@ -303,16 +301,16 @@ TEST(TestDOM, ObjectComplex)
 	jnum = jobject_get(jobj, J_CSTR_TO_BUF("num_1"));
 	EXPECT_TRUE(jis_number(jnum));
 	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_PRECISION_LOSS);
-	EXPECT_EQ(i64, 64);
+	EXPECT_EQ(64, i64);
 	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_OK);
-	EXPECT_EQ(dbl, 64.234);
+	EXPECT_DOUBLE_EQ(dbl, 64.234);
 
 	jnum = jobject_get(jobj, J_CSTR_TO_BUF("num_2"));
 	EXPECT_TRUE(jis_number(jnum));
-	EXPECT_EQ(jnumber_get_i64(jnum, &i64), CONV_POSITIVE_OVERFLOW | CONV_PRECISION_LOSS);
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(jnumber_get_i64(jnum, &i64)));
 	EXPECT_EQ(i64, std::numeric_limits<int64_t>::max());
-	EXPECT_EQ(jnumber_get_f64(jnum, &dbl), CONV_POSITIVE_OVERFLOW);
-	EXPECT_EQ(dbl, std::numeric_limits<double>::infinity());
+	EXPECT_TRUE(CONV_HAS_POSITIVE_OVERFLOW(jnumber_get_f64(jnum, &dbl)));
+	EXPECT_DOUBLE_EQ(dbl, std::numeric_limits<double>::infinity());
 	raw_buffer raw;
 	EXPECT_EQ(jnumber_get_raw(jnum, &raw), CONV_OK);
 	EXPECT_EQ(string(raw.m_str, raw.m_str + raw.m_len), string(veryLargeNumber));
@@ -354,7 +352,7 @@ TEST(TestDOM, ArraySimple)
 			jnumber_create_f64(7),
 			J_END_ARRAY_DECL));
 
-	ASSERT_EQ(jarray_size(simple_arr), 8);
+	ASSERT_EQ(8, jarray_size(simple_arr));
 
 	jvalue_ref val = jarray_get(simple_arr, 0);
 	EXPECT_TRUE(jis_string(val));
@@ -364,12 +362,12 @@ TEST(TestDOM, ArraySimple)
 	EXPECT_TRUE(jis_number(val));
 	int32_t i32{-1};
 	EXPECT_EQ(jnumber_get_i32(val, &i32), CONV_OK);
-	EXPECT_EQ(i32, 1);
+	EXPECT_EQ(1, i32);
 
 	val = jarray_get(simple_arr, 2);
 	EXPECT_TRUE(jis_number(val));
 	EXPECT_EQ(jnumber_get_i32(val, &i32), CONV_OK);
-	EXPECT_EQ(i32, 2);
+	EXPECT_EQ(2, i32);
 
 	val = jarray_get(simple_arr, 3);
 	EXPECT_TRUE(jis_boolean(val));
@@ -387,16 +385,16 @@ TEST(TestDOM, ArraySimple)
 
 	val = jarray_get(simple_arr, 6);
 	EXPECT_TRUE(jis_string(val));
-	EXPECT_EQ(jstring_get_fast(val).m_len, 0);
+	EXPECT_EQ(jstring_get_fast(val).m_len, 0U);
 	raw_buffer buf = jstring_get(val);
 	EXPECT_STREQ(buf.m_str, "");
-	EXPECT_EQ(buf.m_len, 0);
+	EXPECT_EQ(buf.m_len, 0U);
 	free((void *)buf.m_str); // FIXME!!!
 
 	val = jarray_get(simple_arr, 7);
 	EXPECT_TRUE(jis_number(val));
 	EXPECT_EQ(jnumber_get_i32(val, &i32), CONV_OK);
-	EXPECT_EQ(i32, 7);
+	EXPECT_EQ(7, i32);
 }
 
 TEST(TestDOM, ArrayComplex)
@@ -420,7 +418,7 @@ TEST(TestDOM, ArrayComplex)
 			EXPECT_TRUE(jis_number(jarray_get(arr, 20)));
 	}
 
-	EXPECT_EQ(jarray_size(arr), 100);
+	EXPECT_EQ(100, jarray_size(arr));
 
 	for (int32_t i = 0; i < 100; i++)
 	{
@@ -439,7 +437,7 @@ TEST(TestDOM, StringSimple)
 	EXPECT_TRUE(jis_string(str1));
 	EXPECT_STREQ(jstring_get_fast(str1).m_str, "foo bar. the quick brown");
 
-	jvalue_ref str2 = manage(jstring_create_nocopy(j_str_to_buffer(data, sizeof(data) - 1)));
+	jvalue_ref str2 = jstring_create_nocopy(j_str_to_buffer(data, sizeof(data) - 1));
 	EXPECT_TRUE(jis_string(str2));
 	raw_buffer buf = jstring_get_fast(str2);
 	EXPECT_EQ(buf.m_len, sizeof(data) - 1);
@@ -448,6 +446,8 @@ TEST(TestDOM, StringSimple)
 
 	EXPECT_TRUE(jstring_equal2(str1, j_str_to_buffer(data, strlen(data))));
 	EXPECT_TRUE(jstring_equal2(str2, j_str_to_buffer(data, sizeof(data) - 1)));
+
+	j_release(&str2);
 }
 
 struct Dealloc
@@ -466,14 +466,14 @@ TEST(TestDOM, StringDealloc)
 {
 	char const str[] = "the quick brown fox jumped over the lazy dog";
 
-	ASSERT_EQ(45, sizeof(str));
-	ASSERT_EQ(44, strlen(str));
+	ASSERT_EQ(45U, sizeof(str));
+	ASSERT_EQ(44U, strlen(str));
 	raw_buffer srcString = J_CSTR_TO_BUF(str);
-	ASSERT_EQ(44, srcString.m_len);
+	ASSERT_EQ(44U, srcString.m_len);
 
 	char *dynstr = (char *)calloc(srcString.m_len + 1, sizeof(char));
 	ptrdiff_t dynstrlen = strlen(strncpy(dynstr, srcString.m_str, srcString.m_len));
-	ASSERT_EQ(srcString.m_len, dynstrlen);
+	ASSERT_EQ((ptrdiff_t)srcString.m_len, dynstrlen);
 
 	jvalue_ref created_string = jstring_create_nocopy_full(j_str_to_buffer(dynstr, dynstrlen), Dealloc::Free);
 	jvalue_ref old_ref = created_string;

@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef JRESOLVER_H_
 #define JRESOLVER_H_
@@ -23,17 +21,30 @@
 
 namespace pbnjson {
 
+/**
+ * Class provides an interface for external link resolver.
+ */
 class PJSONCXX_API JResolver {
 public:
 	class ResolutionRequest {
 	public:
+		/**
+		 * Create new resolution request
+		 *
+		 * @param schema Schema, which contains link
+		 * @param resource Name, which needs the resolution
+		 */
 		ResolutionRequest(const JSchema &schema, const std::string &resource);
 
+		/// returns the schema that generated the resolution request
 		JSchema schema() const;
+		/// returns the resource name that needs resolution
 		std::string resource() const;
 	private:
-		JSchema m_ctxt;	/// the schema that generated the resolution request
-		std::string m_resource;	/// the resource name that needs resolution
+		/// the schema that generated the resolution request
+		JSchema m_ctxt;
+		/// the resource name that needs to be resolved with the current request
+		std::string m_resource;
 	};
 
 	//TODO Nikolay Orliuk: consider possibility to provide JSchemaResolverRef as
@@ -54,4 +65,3 @@ public:
 }
 
 #endif /* JRESOLVER_H_ */
-

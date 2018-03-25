@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
+#define PBNJSON_USE_DEPRECATED_API
 #include <JDomParser.h>
 #include <pbnjson.h>
 #include "JErrorHandler.h"
@@ -72,6 +71,13 @@ JDomParser::JDomParser()
 {
 }
 
+JDomParser::JDomParser(const JSchema &aSchema)
+	: JParser(aSchema)
+	, m_optimization(DOMOPT_NOOPT)
+	, parser(NULL)
+{
+}
+
 JDomParser::JDomParser(JResolver *resolver)
 	: JParser(resolver)
 	, m_optimization(DOMOPT_NOOPT)
@@ -106,6 +112,34 @@ bool JDomParser::parse(const std::string& input, const JSchema& schema, JErrorHa
 	return begin(schema, errors) && feed(input) && end();
 }
 
+bool JDomParser::parse(const JInput& input)
+{
+	reset();
+	return feed(input) && end();
+}
+
+bool JDomParser::parse(const JInput& input, const JSchema &schema)
+{
+	reset(schema);
+	return feed(input) && end();
+}
+
+void JDomParser::reset()
+{
+	if (parser)
+		jdomparser_deinit(parser);
+	else
+		parser = jdomparser_alloc_memory();
+
+	jdomparser_init(parser, schema.peek());
+}
+
+void JDomParser::reset(const JSchema &_schema)
+{
+	schema = _schema;
+	reset();
+}
+
 bool JDomParser::begin(const JSchema &_schema, JErrorHandler *errors)
 {
 	if (parser)
@@ -123,7 +157,7 @@ bool JDomParser::begin(const JSchema &_schema, JErrorHandler *errors)
 	if (oldInterface && schemaInfo.m_schema->uri_resolver && !jschema_resolve_ex(schemaInfo.m_schema, &externalRefResolver))
 		return false;
 
-	return jdomparser_init(parser, &schemaInfo, m_optimization);
+	return jdomparser_init_old(parser, &schemaInfo, m_optimization);
 }
 
 bool JDomParser::feed(const char *buf, int length)
@@ -135,6 +169,16 @@ bool JDomParser::feed(const char *buf, int length)
 	}
 
 	return true;
+}
+
+bool JDomParser::feed(const JInput& input)
+{
+	return jdomparser_feed(parser, input.m_str, input.m_len);
+}
+
+bool JDomParser::feed(const std::string &data)
+{
+	return feed(data.data(), data.size());
 }
 
 bool JDomParser::end()
@@ -175,6 +219,20 @@ bool JDomParser::parseFile(const std::string &file, const JSchema &schema, JFile
 	}
 
 	return true;
+}
+
+JValue JDomParser::fromString(const JInput &input, const JSchema &schema)
+{
+	JValue res;
+	res.m_jval = jdom_create(input, schema.peek(), &res.error);
+	return res;
+}
+
+JValue JDomParser::fromFile(const char *file, const JSchema &schema)
+{
+	JValue res;
+	res.m_jval = jdom_fcreate(file, schema.peek(), &res.error);
+	return res;
 }
 
 JValue JDomParser::getDom() {

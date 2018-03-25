@@ -1,6 +1,4 @@
-# @@@LICENSE
-#
-# Copyright (c) 2009-2013 LG Electronics, Inc.
+# Copyright (c) 2009-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# LICENSE@@@
+# SPDX-License-Identifier: Apache-2.0
 
 add_definitions(-D_GNU_SOURCE)
 string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
@@ -40,8 +38,6 @@ endif()
 
 webos_add_linker_options(ALL --no-undefined)
 
-set(WITH_TESTS FALSE CACHE BOOL "Control building of unit tests")
-
 set(WITH_VERBOSE_DEBUG FALSE CACHE BOOL "Enable verbose debug logging")
 set(WITH_VERBOSE_TRACE FALSE CACHE BOOL "Enable tracing debug logging")
 
@@ -50,9 +46,8 @@ add_subdirectory(pbnjson_c)
 add_subdirectory(pbnjson_cxx)
 add_subdirectory(pbnjson_validate)
 
-if(WITH_TESTS)
+if(WEBOS_CONFIG_BUILD_TESTS)
 	set(WITH_QTCREATOR FALSE CACHE BOOL "Enable better Qt Creator integration")
-	enable_testing()
 	add_subdirectory(test)
 else()
 	message(STATUS "Skipping all unit tests")

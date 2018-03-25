@@ -1,6 +1,4 @@
-# @@@LICENSE
-#
-#      Copyright (c) 2009-2014 LG Electronics, Inc.
+# Copyright (c) 2009-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# LICENSE@@@
+# SPDX-License-Identifier: Apache-2.0
 
 include_directories(
 	${API_HEADERS}
@@ -22,27 +20,11 @@ include_directories(
 	${API_HEADERS}/pbnjson/c
 	)
 
-webos_add_compiler_flags(ALL -Wall "-std=gnu++0x")
-
-# Find CJSON for comparison benchmarks
-pkg_check_modules(CJSON cjson)
-if(NOT CJSON_FOUND)
-	set(CJSON_INCLUDE_DIR "")
-	set(CJSON_LIBRARIES "")
-	set(HAVE_CJSON false)
-endif()
+set(TEST_LIBRARIES pbnjson_c pbnjson_cpp ${JSON_C_LDFLAGS} ${YAJL_LDFLAGS})
 
 ######################### TEST CONFIGURATION ########################
-set(TEST_LIBRARIES pbnjson_c pbnjson_cpp ${CJSON_LDFLAGS} ${YAJL_LDFLAGS})
-
-include(CheckSymbolExists)
-if(CJSON_FOUND)
-	check_symbol_exists("json_object_new_object" "json_object.h" HAVE_CJSON)
-endif()
-
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cjson.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/cjson.h)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/yajl.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/yajl.h)
-include_directories(${CMAKE_CURRENT_BINARY_DIR} ${YAJL_INCLUDE_DIRS} ${CJSON_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR} ${YAJL_INCLUDE_DIRS} ${CJSON_INCLUDE_DIRS} ${WEBOS_GTEST_INCLUDES})
 
 list(APPEND TEST_PARSE_FILES file_parse_test)
 
@@ -51,8 +33,6 @@ foreach(i ${TEST_PARSE_FILES})
 	configure_file(${i}.schema ${i}.schema COPYONLY)
 endforeach()
 
-
-
 ######################### THE UNIT TESTS ############################
 
 SET(UnitTest
@@ -60,19 +40,25 @@ SET(UnitTest
 	TestParse
 	TestParserMemPool
 	TestDOM
+	TestJError
 	TestJvalue
 	TestJobject
-	TestSchemaSanity
 	TestSchemaContact
 	TestSchemaUniqueItems
+	TestSchemaSanity
 	TestSchemaParsingErrorReporting
 	TestSchemaValidationErrorReporting
 	TestSchemaFromJvalue
+	TestStringify
+	TestNewSchemaContact
+	TestNewSchemaArraySanity
+	TestExample
+	TestThreading
 	)
 
 FOREACH(TEST ${UnitTest})
 	add_executable(${TEST} ${TEST}.cpp)
-	target_link_libraries(${TEST} ${TEST_LIBRARIES} gtest gtest_main pthread)
+	target_link_libraries(${TEST} ${TEST_LIBRARIES} ${WEBOS_GTEST_LIBRARIES} pthread)
 	add_test(C.${TEST} ${TEST})
 ENDFOREACH()
 
@@ -86,7 +72,7 @@ SET(PerformanceTests
 
 FOREACH(TEST ${PerformanceTests})
 	add_executable(${TEST} ${TEST}.cpp)
-	target_link_libraries(${TEST} ${TEST_LIBRARIES} gtest gtest_main pthread)
+	target_link_libraries(${TEST} ${TEST_LIBRARIES} ${WEBOS_GTEST_LIBRARIES} pthread)
 ENDFOREACH()
 
 add_definitions(-DSCHEMA_DIR="${CMAKE_CURRENT_BINARY_DIR}/../schemas/")

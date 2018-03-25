@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "../combined_validator.h"
 #include "../validation_api.h"
@@ -64,9 +62,9 @@ TEST_F(TestAnyOfValidator, OnlyGeneric)
 	combined_validator_add_value(v, GENERIC_VALIDATOR);
 	auto s = mk_ptr(validation_state_new(&v->base, NULL, &notify), validation_state_free);
 
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s.get(), this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestAnyOfValidator, GenericAndNull)
@@ -75,9 +73,9 @@ TEST_F(TestAnyOfValidator, GenericAndNull)
 	combined_validator_add_value(v, NULL_VALIDATOR);
 	auto s = mk_ptr(validation_state_new(&v->base, NULL, &notify), validation_state_free);
 
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s.get(), this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestAnyOfValidator, GenericAndNullAnyValue)
@@ -86,9 +84,9 @@ TEST_F(TestAnyOfValidator, GenericAndNullAnyValue)
 	combined_validator_add_value(v, NULL_VALIDATOR);
 	auto s = mk_ptr(validation_state_new(&v->base, NULL, &notify), validation_state_free);
 
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_boolean(true)), s.get(), this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestAnyOfValidator, BooleanAndNullOnNull)
@@ -97,9 +95,9 @@ TEST_F(TestAnyOfValidator, BooleanAndNullOnNull)
 	combined_validator_add_value(v, NULL_VALIDATOR);
 	auto s = mk_ptr(validation_state_new(&v->base, NULL, &notify), validation_state_free);
 
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_boolean(true)), s.get(), this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestAnyOfValidator, BooleanAndNullOnBoolean)
@@ -108,9 +106,9 @@ TEST_F(TestAnyOfValidator, BooleanAndNullOnBoolean)
 	combined_validator_add_value(v, NULL_VALIDATOR);
 	auto s = mk_ptr(validation_state_new(&v->base, NULL, &notify), validation_state_free);
 
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s.get(), this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestAnyOfValidator, BooleanAndNullOnString)
@@ -119,9 +117,9 @@ TEST_F(TestAnyOfValidator, BooleanAndNullOnString)
 	combined_validator_add_value(v, NULL_VALIDATOR);
 	auto s = mk_ptr(validation_state_new(&v->base, NULL, &notify), validation_state_free);
 
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_string("a", 1)), s.get(), this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestAnyOfValidator, BooleanAndArray)
@@ -138,7 +136,7 @@ TEST_F(TestAnyOfValidator, BooleanAndArray)
 	combined_validator_add_value(v, &array->base);
 	auto s = mk_ptr(validation_state_new(&v->base, NULL, &notify), validation_state_free);
 
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_boolean(true)), s.get(), this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }

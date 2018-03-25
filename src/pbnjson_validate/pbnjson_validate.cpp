@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-// Copyright (c) 2014 LG Electronics, Inc.
+// Copyright (c) 2014-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
-
+#define PBNJSON_USE_DEPRECATED_API
 #include <iostream>
 #include <sys/ioctl.h>
 #include <pbnjson.hpp>
@@ -128,7 +126,7 @@ int main(int argc, char *argv[])
 			schema.reset(new JSchemaFragment("{}"));
 		else
 		{
-			schema.reset(new JSchemaFile(schema_file, NULL, &error_handler, NULL));
+			schema.reset(new JSchemaFile(schema_file, schema_file, &error_handler, NULL));
 			if (!schema->isInitialized())
 			{
 				cerr << "Failed to open JSON schema " << schema_file << endl;

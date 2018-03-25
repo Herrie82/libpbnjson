@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef LIB_LOG_H_
 #define LIB_LOG_H_
@@ -27,12 +25,7 @@
 #include <compiler/noreturn_attribute.h>
 #include <compiler/builtins.h>
 
-#ifndef PJSON_NO_LOGGING
-#pragma weak PmLogGetLibContext
-#pragma weak _PmLogMsgKV
-
-#include <PmLogLib.h>
-#endif
+#include "jerror_internal.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +37,17 @@ extern "C" {
 #if HAVE_VSYSLOG || HAVE_VFPRINTF
 #define HAVE_LOG_TARGET 1
 #endif
+
+#if HAVE_LOG_TARGET
+PJSON_LOCAL void log_info(const char *path, int line, const char *message, ...) PRINTF_FORMAT_FUNC(3, 4);
+PJSON_LOCAL void log_warn(const char *path, int line, const char *message, ...) PRINTF_FORMAT_FUNC(3, 4);
+PJSON_LOCAL void log_fatal(const char *path, int line, const char *message, ...) PRINTF_FORMAT_FUNC(3, 4);
+#else
+// no way to print anything
+static inline void log_info(const char *path, int line, const char *message, ...){}
+static inline void log_warn(const char *path, int line, const char *message, ...){}
+static inline void log_fatal(const char *path, int line, const char *message, ...){}
+#endif /* HAVE_LOG_TARGET */
 
 #ifdef NDEBUG
 #undef PJSON_LOG_DBG
@@ -59,7 +63,7 @@ extern "C" {
 #endif
 
 #if PJSON_LOG_TRACE
-#define PJ_LOG_TRACE(format, ...) PMLOG_TRACE(format, ##__VA_ARGS__)
+#define PJ_LOG_TRACE(format, ...) log_info(__FILE__, __LINE__, " %s " format, __PRETTY_FUNCTION__, ##__VA_ARGS__)
 #else
 #define PJ_LOG_TRACE(format, ...) PJSON_NOOP
 #endif
@@ -82,24 +86,28 @@ extern "C" {
 #define PJ_SCHEMA_TRACIEST(format, ...) PJSON_NOOP
 #endif
 
-#if PJSON_LOG_DBG && !PJSON_NO_LOGGING
-#define PJ_LOG_DBG(format, ...) PmLogDebug(PmLogGetLibContext(), format, ##__VA_ARGS__)
+#if PJSON_LOG_DBG
+#define PJ_LOG_DBG(format, ...) log_info(__FILE__, __LINE__, format, ##__VA_ARGS__ )
 #else
 #define PJ_LOG_DBG(format, ...) PJSON_NOOP
 #endif
 
 #if PJSON_LOG_INFO && !PJSON_NO_LOGGING
-#define PJ_LOG_INFO(msgid, kvcount, ...) PmLogInfo(PmLogGetLibContext(), msgid, kvcount, ##__VA_ARGS__)
+#define PJ_LOG_INFO(format, ...) log_info(__FILE__, __LINE__, format, ##__VA_ARGS__ )
 #else
-#define PJ_LOG_INFO(msgid, kvcount, ...) PJSON_NOOP
+#define PJ_LOG_INFO(format, ...) PJSON_NOOP
 #endif /* PJSON_NO_LOGGING */
 
 #if !PJSON_NO_LOGGING
-#define PJ_LOG_WARN(msgid, kvcount, ...) PmLogWarning(PmLogGetLibContext(), msgid, kvcount, ##__VA_ARGS__)
-#define PJ_LOG_ERR(msgid, kvcount, ...) PmLogError(PmLogGetLibContext(), msgid, kvcount, ##__VA_ARGS__)
+#if !PJSON_NO_WARNINGS
+#define PJ_LOG_WARN(format, ...) log_warn(__FILE__, __LINE__, format, ##__VA_ARGS__)
 #else
-#define PJ_LOG_WARN(msgid, kvcount, ...) PJSON_NOOP
-#define PJ_LOG_ERR(msgid, kvcount, ...) PJSON_NOOP
+#define PJ_LOG_WARN(format, ...) PJSON_NOOP
+#endif
+#define PJ_LOG_ERR(format, ...) log_fatal(__FILE__, __LINE__, format, ##__VA_ARGS__)
+#else
+#define PJ_LOG_WARN(format, ...) PJSON_NOOP
+#define PJ_LOG_ERR(format, ...) PJSON_NOOP
 #endif /* PJSON_NO_LOGGING */
 
 #define PJ_SCHEMA_DBG(...) PJ_LOG_DBG(__VA_ARGS__)
@@ -109,9 +117,24 @@ extern "C" {
 
 #define CHECK_CONDITION_RETURN_VALUE(errorCondition, returnValue, format, ...)					\
 	if (UNLIKELY(errorCondition)) {										\
-		PJ_LOG_ERR("PBNJSON_CONDITION_ERR", 0, format, ##__VA_ARGS__);						\
+		PJ_LOG_ERR(format, ##__VA_ARGS__);								\
 		return returnValue;										\
 	}
+
+#define CHECK_CONDITION_RETURN_PARSER_ERROR(errorCondition, returnValue, error, string) \
+	if (UNLIKELY(errorCondition)) {                                                     \
+		jerror_set(error, JERROR_TYPE_SYNTAX, string);                                  \
+		return returnValue;                                                             \
+	}
+
+#define CHECK_POINTER_SET_ERROR_RETURN(pointer, returnValue, error, string)             \
+	if (UNLIKELY(NULL == pointer)) {                                                    \
+		jerror_set(error, JERROR_TYPE_INVALID_PARAMETERS, string);                      \
+		return returnValue;                                                             \
+	}
+#define CHECK_POINTER_SET_ERROR_RETURN_NULL(pointer, error)                               \
+	CHECK_POINTER_SET_ERROR_RETURN(pointer, NULL, error,                                  \
+	                               "Parameter '" #pointer "' must be a non-null pointer") \
 
 #define CHECK_CONDITION_RETURN(errorCondition, format, ...) 							\
 	CHECK_CONDITION_RETURN_VALUE(errorCondition, PJSON_EMPTY_VAR, format, ##__VA_ARGS__)
@@ -156,11 +179,11 @@ extern "C" {
 #define SANITY_CHECK_POINTER(pointer)													\
 		do {															\
 			if (UNLIKELY((pointer) == FREED_POINTER)) {									\
-				PJ_LOG_ERR("PBNJSON_FREE_POINTER", 0, "Attempting to use pointer %p that has already been freed", (pointer));	\
+				PJ_LOG_ERR("Attempting to use pointer %p that has already been freed", (pointer));			\
 				abort();												\
 			}														\
 			if (UNLIKELY((void *)(pointer) < (void *)1024) && pointer != NULL) {						\
-				PJ_LOG_ERR("PBNJSON_INVALID_POINTER", 0, "Invalid pointer %p assuming that first page is always unmapped", (void *)(pointer)); 	\
+				PJ_LOG_ERR("Invalid pointer %p assuming that first page is always unmapped", (void *)(pointer)); 	\
 				abort();												\
 			}														\
 		}															\
@@ -170,7 +193,7 @@ extern "C" {
 	do {									\
 		char value[] = {0xde, 0xad, 0xbe, 0xef };			\
 		char *mem = (char *)memory;					\
-		for (int i = 0; i < length; i++)				\
+		for (size_t i = 0; i < length; i++)				\
 			SANITY_CLEAR_VAR(mem[i], value[i%sizeof(value)]);	\
 	} while (0)
 #define SANITY_CHECK_MEMORY(memory, length)					\
@@ -178,11 +201,11 @@ extern "C" {
 		char value[] = {0xde, 0xad, 0xbe, 0xef };			\
 		char *mem = (char *)memory;					\
 		bool ok = length == 0;						\
-		for (int i = 0; i < length; i++) {				\
+		for (size_t i = 0; i < length; i++) {				\
 			if (mem[i] != value[i % 4]) {ok = true; break; }	\
 		}								\
 		if (!ok) {							\
-			PJ_LOG_ERR("PBNJSON_FREE_MEM", 0, "Attempting to use memory at %p"\
+			PJ_LOG_ERR("Attempting to use memory at %p"		\
 				   " that has already been freed", memory);	\
 			abort();						\
 		}								\

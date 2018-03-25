@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2013 LG Electronics, Inc.
+// Copyright (c) 2013-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <gtest/gtest.h>
 #include <pbnjson.h>
@@ -88,4 +86,28 @@ TEST(JobjRemove2, ObjectRemoveHashCollision)
 	jobject_remove(obj, j_cstr_to_buffer("ab"));
 	ASSERT_FALSE(jobject_containskey(obj, j_cstr_to_buffer("ab")));
 	ASSERT_TRUE(jobject_containskey(obj, j_cstr_to_buffer("b")));
+}
+
+TEST(JobjRemove2, GetNested)
+{
+	jvalue_ref root = jobject_create();
+	jvalue_ref a = jobject_create();
+	ASSERT_TRUE(jobject_put(root, J_CSTR_TO_JVAL("a"), a));
+	jvalue_ref b = jobject_create();
+	ASSERT_TRUE(jobject_put(a, J_CSTR_TO_JVAL("b"), b));
+	jvalue_ref c = jarray_create(NULL);
+	ASSERT_TRUE(jobject_put(b, J_CSTR_TO_JVAL("c"), c));
+	jvalue_ref d = jboolean_create(true);
+	ASSERT_TRUE(jobject_put(a, J_CSTR_TO_JVAL("d"), d));
+
+	EXPECT_EQ(a, jobject_get_nested(root, "a", NULL));
+	EXPECT_EQ(b, jobject_get_nested(root, "a", "b", NULL));
+	EXPECT_EQ(c, jobject_get_nested(root, "a", "b", "c", NULL));
+	EXPECT_EQ(d, jobject_get_nested(root, "a", "d", NULL));
+
+	EXPECT_FALSE(jis_valid(jobject_get_nested(root, "x", NULL)));
+	EXPECT_FALSE(jis_valid(jobject_get_nested(root, "a", "x", NULL)));
+	EXPECT_FALSE(jis_valid(jobject_get_nested(root, "a", "d", "x", NULL)));
+
+	j_release(&root);
 }

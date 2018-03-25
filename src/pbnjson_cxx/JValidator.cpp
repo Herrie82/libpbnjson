@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <JValidator.h>
 #include <JSchemaResolverWrapper.h>
@@ -86,7 +84,7 @@ bool JValidator::isValid(const JValue &jVal, const JSchema &schema, JErrorHandle
 }
 
 
-bool JValidator::apply(const JValue &jVal, const JSchema &schema, JResolver *jResolver, JErrorHandler *errors)
+bool JValidator::apply(const JValue &jValue, const JSchema &jSchema, JResolver *jResolver, JErrorHandler *errors)
 {
 	JErrorCallbacks errorHandler;
 	errorHandler.m_parser = err_parser;
@@ -103,14 +101,14 @@ bool JValidator::apply(const JValue &jVal, const JSchema &schema, JResolver *jRe
 		schemaresolver.m_inRecursion = 0;
 
 		JSchemaInfo schemainfo;
-		jschema_info_init(&schemainfo, schema.peek(), &schemaresolver, &errorHandler);
+		jschema_info_init(&schemainfo, jSchema.peek(), &schemaresolver, &errorHandler);
 
-		return jvalue_apply_schema(jVal.peekRaw(), &schemainfo);
+		return jvalue_apply_schema(jValue.peekRaw(), &schemainfo);
 	}
 
 	JSchemaInfo schemainfo;
-	jschema_info_init(&schemainfo, schema.peek(), NULL, &errorHandler);
-	return jvalue_apply_schema(jVal.peekRaw(), &schemainfo);
+	jschema_info_init(&schemainfo, jSchema.peek(), NULL, &errorHandler);
+	return jvalue_apply_schema(jValue.peekRaw(), &schemainfo);
 }
 
 }

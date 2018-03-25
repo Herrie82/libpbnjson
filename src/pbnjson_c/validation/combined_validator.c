@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "combined_validator.h"
 #include "generic_validator.h"
@@ -328,16 +326,16 @@ static void _visit(Validator *v,
 	GSList *iter = a->validators;
 	while (iter)
 	{
-		Validator *v = iter->data;
-		if (!v)
+		Validator *item = iter->data;
+		if (!item)
 			continue;
-		enter_func(NULL, v, ctxt);
-		validator_visit(v, enter_func, exit_func, ctxt);
+		enter_func(NULL, item, ctxt);
+		validator_visit(item, enter_func, exit_func, ctxt);
 		Validator *new_v = NULL;
-		exit_func(NULL, v, ctxt, &new_v);
+		exit_func(NULL, item, ctxt, &new_v);
 		if (new_v)
 		{
-			validator_unref(v);
+			validator_unref(item);
 			iter->data = new_v;
 		}
 		iter = g_slist_next(iter);

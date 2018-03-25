@@ -1,22 +1,18 @@
-/****************************************************************
- * @@@LICENSE
- *
- * Copyright (c) 2014 LG Electronics, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * LICENSE@@@
- ****************************************************************/
+// Copyright (c) 2014-2018 LG Electronics, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  *  @file jschema_jvalue.c
@@ -32,6 +28,7 @@
 #include "jschema_types_internal.h"
 #include "validation/schema_builder.h"
 #include "jobject_internal.h"
+#include "jobject.h"
 
 static bool schema_null(void *ctx, jvalue_ref ref)
 { return jschema_builder_token((jschema_builder *)ctx, TOKEN_NULL); }
@@ -72,27 +69,19 @@ static bool schema_number(void *ctx, jvalue_ref ref)
 static bool schema_int(void *ctx, jvalue_ref ref)
 {
 	/* we know exactly what we convert */
-	char buf[24];
-	int len = sprintf(buf, "%" PRIi64, jnum_deref(ref)->value.integer);
-	assert( 0 < len && len < sizeof(buf) ); /* if len > sizeof(buf) stack already overwritten */
-	return jschema_builder_number((jschema_builder *)ctx, buf, (size_t)len);
+	const char *buf = jvalue_tostring_simple(ref);
+	return jschema_builder_number((jschema_builder *)ctx, buf, strlen(buf));
 }
 
 static bool schema_double(void *ctx, jvalue_ref ref)
 {
 	/* we know exactly what we convert */
-	char buf[32]; /* hope we'll fit everything */
-	int len = sprintf(buf, "%e", jnum_deref(ref)->value.floating);
-	assert( 0 < len && len < sizeof(buf) ); /* if len > sizeof(buf) stack already overwritten */
-	return jschema_builder_number((jschema_builder *)ctx, buf, (size_t)len);
+	const char *buf = jvalue_tostring_simple(ref);
+	return jschema_builder_number((jschema_builder *)ctx, buf, strlen(buf));
 }
 
 jschema_ref jschema_parse_jvalue(jvalue_ref value, JErrorCallbacksRef errorHandler, const char *root_scope)
 {
-	jschema_ref schema = jschema_new();
-	if (!schema)
-		return NULL;
-
 	jschema_builder builder;
 	jschema_builder_init(&builder);
 
@@ -113,10 +102,10 @@ jschema_ref jschema_parse_jvalue(jvalue_ref value, JErrorCallbacksRef errorHandl
 	if (!jvalue_traverse(value, &traverse, &builder))
 	{
 		jschema_builder_destroy(&builder);
-		jschema_release(&schema);
 		return NULL;
 	}
 
+	jschema_ref schema = jschema_new();
 	schema->validator = jschema_builder_finish(&builder, schema->uri_resolver, root_scope);
 
 	if (!schema->validator)
@@ -133,6 +122,48 @@ jschema_ref jschema_parse_jvalue(jvalue_ref value, JErrorCallbacksRef errorHandl
 		jschema_builder_destroy(&builder);
 		jschema_release(&schema);
 		return NULL;
+	}
+
+	jschema_builder_destroy(&builder);
+	return schema;
+}
+
+jschema_ref jschema_jcreate(jvalue_ref input, jerror **err)
+{
+	jschema_builder builder;
+	jschema_builder_init(&builder);
+
+	static struct TraverseCallbacks traverse = {
+		.jnull = schema_null,
+		.jbool = schema_bool,
+		.jnumber_int = schema_int,
+		.jnumber_double = schema_double,
+		.jnumber_raw = schema_number,
+		.jstring = schema_str,
+		.jobj_start = schema_start_map,
+		.jobj_key = schema_key,
+		.jobj_end = schema_end_map,
+		.jarr_start = schema_start_arr,
+		.jarr_end = schema_end_arr,
+	};
+
+	if (!jvalue_traverse(input, &traverse, &builder))
+	{
+		jerror_set(err, JERROR_TYPE_INTERNAL, "error during jvalue traversal");
+		jschema_builder_destroy(&builder);
+		return NULL;
+	}
+
+	jschema_ref schema = jschema_new();
+	schema->validator = jschema_builder_finish(&builder, schema->uri_resolver, URI_SCHEME_RELATIVE);
+
+	if (!schema->validator)
+	{
+		jerror_set_formatted(err, JERROR_TYPE_SCHEMA,
+		                     "Schema parse failure: %s (code %d)",
+		                     jschema_builder_error_str(&builder), jschema_builder_error_code(&builder));
+		jschema_release(&schema);
+		schema = NULL;
 	}
 
 	jschema_builder_destroy(&builder);

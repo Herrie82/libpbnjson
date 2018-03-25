@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef J_API_H_
 #define J_API_H_
@@ -44,8 +42,8 @@ extern "C" {
 #endif
 
 /**
- * Set the name of the component utilizing this library.  This should be as descriptive as possible
- * to help narrow down bugs.  If this is never called, then the string "UNIDENTIFIED CONSUMER (pid)!!!!!" is used instead.
+ * Set the name of the component utilizing this library. This should be as descriptive as possible
+ * to help narrow down bugs. If this is never called, then the string "UNIDENTIFIED CONSUMER (pid)!!!!!" is used instead.
  * String must have program lifetime (or if it is no longer available, old value = getConsumerName, setConsumerName(null), free old value).
  *
  * @param name The name of the component using this API (per-process)

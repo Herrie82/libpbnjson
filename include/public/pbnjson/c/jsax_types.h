@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef JSAX_TYPES_H_
 #define JSAX_TYPES_H_
@@ -36,21 +34,28 @@ typedef int (*jsax_array_start)(JSAXContextRef ctxt);
 typedef int (*jsax_array_end)(JSAXContextRef ctxt);
 
 /**
- * If any function pointers are NULL in this structure, then they will not be invoked.
- * Note that m_errorHandler is an actual structure, not a pointer, so it's internal pointers
- * must be properly initialized.
- */
+  * @brief The structure contains set of callbacks, that will be called during parsing of JSON string. The structure is used in JSON SAX parser
+  */
 typedef struct {
+    /// callback which will be called when the parser finds the beginning of an object.
 	jsax_object_start m_objStart;
+    /// callback which will be called when the parser finds an ObjectKey.
 	jsax_object_key m_objKey;
+    /// callback which will be called when the object ends.
 	jsax_object_end m_objEnd;
 
+    /// callback which will be called when an array begins.
 	jsax_array_start m_arrStart;
+    /// callback which will be called when an array ends.
 	jsax_array_end m_arrEnd;
 
+    /// callback which will be called when a string value is found.
 	jsax_string m_string;
+    /// callback which will be called when a numeric value is found.
 	jsax_number m_number;
+    /// callback which will be called when a boolean value is found.
 	jsax_boolean m_boolean;
+    /// callback which will be called when a null value is found.
 	jsax_null m_null;
 } PJSAXCallbacks;
 

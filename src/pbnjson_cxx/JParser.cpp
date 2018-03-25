@@ -1,21 +1,20 @@
-/* @@@LICENSE
-*
-*      Copyright (c) 2012-2014 LG Electronics, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*
-LICENSE@@@ */
+// Copyright (c) 2012-2018 LG Electronics, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
 
+#define PBNJSON_USE_DEPRECATED_API
 #include <JParser.h>
 #include <JErrorHandler.h>
 #include <pbnjson.h>
@@ -100,7 +99,7 @@ static int __number(JSAXContextRef ctxt, const char *number, size_t len)
 			return SaxBounce::n(p, asFloat, toFloatErrors);
 		}
 		default:
-			PJ_LOG_ERR("PBNJSON_NO_NUMS_TYPE", 0, "Actual parser hasn't told us a valid type for how it wants numbers presented to it");
+			PJ_LOG_ERR("Actual parser hasn't told us a valid type for how it wants numbers presented to it");
 			return 0;
 	}
 }
@@ -155,8 +154,19 @@ static inline raw_buffer strToRawBuffer(const std::string& str)
 	return j_str_to_buffer(str.c_str(), str.length());
 }
 
+//! @cond Doxygen_Suppress
 JParser::JParser()
-	: schema(JSchema::AllSchema())
+	: m_resolverWrapper(NULL)
+	, schema(JSchema::AllSchema())
+	, oldInterface(0)
+	, m_errors(NULL)
+	, parser(NULL)
+{
+}
+
+JParser::JParser(const JSchema &aSchema)
+	: m_resolverWrapper(NULL)
+	, schema(aSchema)
 	, oldInterface(0)
 	, m_errors(NULL)
 	, parser(NULL)
@@ -174,7 +184,7 @@ JParser::JParser(JResolver* schemaResolver)
 
 JParser::JParser(const JParser& other)
 	: m_resolverWrapper(new JSchemaResolverWrapper(*other.m_resolverWrapper))
-	, schema(JSchema::AllSchema())
+	, schema(other.schema)
 	, oldInterface(1)
 	, m_errors(other.m_errors)
 	, parser(NULL)
@@ -183,6 +193,7 @@ JParser::JParser(const JParser& other)
 
 JParser::~JParser()
 {
+	delete m_resolverWrapper;
 	if (parser) {
 		jsaxparser_deinit(parser);
 		jsaxparser_free_memory(parser);
@@ -207,8 +218,8 @@ JSchemaInfo JParser::prepare(const JSchema& schema, JSchemaResolver& resolver, J
 JSchemaResolver JParser::prepareResolver() const
 {
 	JSchemaResolver resolver;
-	resolver.m_resolve = &(m_resolverWrapper->sax_schema_resolver);
-	resolver.m_userCtxt = m_resolverWrapper.get();
+	resolver.m_resolve = &m_resolverWrapper->sax_schema_resolver;
+	resolver.m_userCtxt = m_resolverWrapper;
 	resolver.m_inRecursion = 0;
 	return resolver;
 }
@@ -244,7 +255,7 @@ bool JParser::begin(const JSchema &_schema, JErrorHandler *errors)
 	if (oldInterface && schemaInfo.m_schema->uri_resolver && !jschema_resolve_ex(schemaInfo.m_schema, &externalRefResolver))
 		return false;
 
-	return jsaxparser_init(parser, &schemaInfo, &callbacks, this);
+	return jsaxparser_init_old(parser, &schemaInfo, &callbacks, this);
 }
 
 bool JParser::feed(const char *buf, int length)
@@ -252,9 +263,35 @@ bool JParser::feed(const char *buf, int length)
 	return jsaxparser_feed(parser, buf, length);
 }
 
+bool JParser::feed(const std::string &data)
+{
+	return feed(data.data(), data.size());
+}
+
+bool JParser::feed(const JInput& input)
+{
+	return jsaxparser_feed(parser, input.m_str, input.m_len);
+}
+
 bool JParser::end()
 {
 	return jsaxparser_end(parser);
+}
+
+void JParser::reset()
+{
+	if (parser)
+		jsaxparser_deinit(parser);
+	else
+		parser = jsaxparser_alloc_memory();
+
+	jsaxparser_init(parser, schema.peek(), &callbacks, this);
+}
+
+void JParser::reset(const JSchema &_schema)
+{
+	schema = _schema;
+	reset();
 }
 
 char const *JParser::getError()
@@ -282,6 +319,16 @@ bool JParser::parse(const std::string& input, const JSchema& schema, JErrorHandl
 	return false;
 }
 
+bool JParser::parse(const JInput &input)
+{
+	return jsax_parse_with_callbacks(input, schema.peek(), &callbacks, this, 0);
+}
+
+bool JParser::parse(const JInput &input, const JSchema &schema)
+{
+	return jsax_parse_with_callbacks(input, schema.peek(), &callbacks, this, 0);
+}
+
 JErrorHandler* JParser::errorHandlers() const
 {
 	return m_errors;
@@ -301,5 +348,6 @@ JParser::ParserPosition JParser::getPosition() const
 {
 	return (JParser::ParserPosition){ -1, -1 };
 }
+//!@endcond Doxygen_Suppress
 
 }

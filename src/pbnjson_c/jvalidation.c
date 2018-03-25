@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <stddef.h>
 #include <unistd.h>
@@ -35,6 +33,8 @@
 #include "jobject_internal.h"
 #include "liblog.h"
 #include "jvalue/num_conversion.h"
+#include "jerror_internal.h"
+#include "jschema_types_internal.h"
 #include "jparse_stream_internal.h"
 #include "jtraverse.h"
 #include "validation/validation_state.h"
@@ -51,6 +51,17 @@ typedef struct {
 static bool check_schema_jnull(void *ctxt, jvalue_ref ref)
 {
 	ValidationContext *context = (ValidationContext*)ctxt;
+	if (!jis_valid(ref))
+	{
+		struct __JSAXContext fake_sax_ctxt = {
+			.m_errors = context->callbacks,
+			.m_error_code = VEC_UNEXPECTED_VALUE,
+			.errorDescription = "jinvalid() cannot be validated against any schema"
+		};
+
+		context->callbacks->m_parser(context->callbacks->m_ctxt, &fake_sax_ctxt);
+		return false;
+	}
 	ValidationEvent e = validation_event_null();
 	return validation_check(&e, context->validation_state, context);
 }
@@ -190,41 +201,54 @@ static Notification jvalue_apply_notification =
 	.default_property_func = &on_default_property,
 };
 
-static bool jvalue_schema_work(jvalue_ref jref, const JSchemaInfoRef schema_info, Notification *notifications)
+static inline void set_error_from_context(struct __JSAXContext *ctx, jerror_type type, jerror** err)
 {
-	if (jref == NULL)
-		return false;
-
-	if ( (jref->m_type != JV_OBJECT) && (jref->m_type != JV_ARRAY) )
+	if (err)
 	{
-		return false;
+		const char* error_text = ctx->errorDescription ? ctx->errorDescription : "unknown error";
+		jerror_set_formatted(err, type, "%d: %s", ctx->m_error_code, error_text);
 	}
+}
 
-	if (schema_info == NULL)
-		return false;
+static bool cb_parser_error(void *ctxt, JSAXContextRef parseCtxt)
+{
+	set_error_from_context((struct __JSAXContext*)parseCtxt,
+	                       JERROR_TYPE_SYNTAX, (jerror **)ctxt);
+	return false;
+}
 
-	Validator *validator = NOTHING_VALIDATOR;
-	UriResolver *uri_resolver = NULL;
-	if (schema_info->m_schema)
-	{
-		validator = schema_info->m_schema->validator;
-		uri_resolver = schema_info->m_schema->uri_resolver;
-	}
+static bool cb_schema_error(void *ctxt, JSAXContextRef parseCtxt)
+{
+	set_error_from_context((struct __JSAXContext*)parseCtxt,
+	                       JERROR_TYPE_SCHEMA, (jerror**)ctxt);
+	return false;
+}
+
+static bool cb_unknown_error(void *ctxt, JSAXContextRef parseCtxt)
+{
+	set_error_from_context((struct __JSAXContext*)parseCtxt,
+	                       JERROR_TYPE_INTERNAL, (jerror**)ctxt);
+	return false;
+}
+
+static bool jvalue_schema_work(jvalue_ref jref, const jschema_ref schema, JErrorCallbacksRef cb,
+                               Notification *notifications)
+{
+	assert(schema != NULL);
 
 	ValidationState validation_state = { 0 };
 	validation_state_init(&validation_state,
-	                      validator,
-	                      uri_resolver,
+	                      schema->validator,
+	                      schema->uri_resolver,
 	                      notifications);
 
 	ValidationContext ctxt = {
-		.callbacks = schema_info->m_errHandler,
+		.callbacks = cb,
 		.jvalue = jref,
 		.validation_state = &validation_state,
 	};
 
 	bool retVal = jvalue_traverse(jref, &traverse, &ctxt);
-
 	validation_state_clear(&validation_state);
 
 	return retVal;
@@ -232,10 +256,66 @@ static bool jvalue_schema_work(jvalue_ref jref, const JSchemaInfoRef schema_info
 
 bool jvalue_check_schema(jvalue_ref jref, const JSchemaInfoRef schema_info)
 {
-	return jvalue_schema_work(jref, schema_info, &jvalue_check_notification);
+	if (jref == NULL)
+	{
+		return false;
+	}
+
+	if (jref->m_type != JV_OBJECT && jref->m_type != JV_ARRAY)
+	{
+		return false;
+	}
+
+	if (schema_info == NULL)
+	{
+		return false;
+	}
+
+	return jvalue_schema_work(jref, schema_info->m_schema, schema_info->m_errHandler, &jvalue_check_notification);
 }
 
-bool jvalue_apply_schema(jvalue_ref jref, const JSchemaInfoRef schema_info)
+bool jvalue_validate(const jvalue_ref val, const jschema_ref schema, jerror **err)
 {
-	return jvalue_schema_work(jref, schema_info, &jvalue_apply_notification);
+	struct JErrorCallbacks cb =
+	{
+		.m_parser  = cb_parser_error,
+		.m_schema  = cb_schema_error,
+		.m_unknown = cb_unknown_error,
+		.m_ctxt    = err
+	};
+
+	return jvalue_schema_work(val, schema, &cb, &jvalue_check_notification);
+}
+
+bool jvalue_apply_schema(jvalue_ref val, const JSchemaInfoRef schema)
+{
+	if (val == NULL)
+	{
+		return false;
+	}
+
+	if (val->m_type != JV_OBJECT && val->m_type != JV_ARRAY)
+	{
+		return false;
+	}
+
+	if (schema == NULL)
+	{
+		return false;
+	}
+
+	return jvalue_schema_work(val, schema->m_schema, schema->m_errHandler,
+	                          &jvalue_apply_notification);
+}
+
+bool jvalue_validate_apply(jvalue_ref val, const jschema_ref schema, jerror **err)
+{
+	struct JErrorCallbacks cb =
+	{
+		.m_parser  = cb_parser_error,
+		.m_schema  = cb_schema_error,
+		.m_unknown = cb_unknown_error,
+		.m_ctxt    = err
+	};
+	return jvalue_schema_work(val, schema, &cb, &jvalue_apply_notification);
 }

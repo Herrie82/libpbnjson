@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "gen_stream.h"
 #include "jobject.h"
@@ -43,6 +41,8 @@ typedef struct PJSON_LOCAL {
 	StreamStatus error;
 } ActualStream;
 
+#define JGEN_DEFAULT_INDENT "  "
+
 #define CHECK_HANDLE(stream) 							\
 	do {									\
 		if (stream->error != GEN_OK || stream->handle == NULL) {	\
@@ -52,42 +52,6 @@ typedef struct PJSON_LOCAL {
 			return stream;						\
 		}								\
 	} while(0)
-
-// Why is this emitting a warning - is this due to the compiler version on OSX?
-#if 0
-#define INTERNAL_MALLOC_SIZE RETURN_SIZE2(2, 3)
-#define INTERNAL_MALLOC_SIZE2 RETURN_SIZE(3)
-#else
-#define INTERNAL_MALLOC_SIZE
-#define INTERNAL_MALLOC_SIZE2
-#endif
-
-// for some reason the return size is ignored
-static void * pjson_internal_calloc(UNUSED_VAR void *ctx, size_t nmemb, size_t sz) MALLOC_FUNC INTERNAL_MALLOC_SIZE UNUSED_FUNC;
-static void * pjson_internal_malloc(UNUSED_VAR void *ctx, size_t nmemb, size_t sz) MALLOC_FUNC INTERNAL_MALLOC_SIZE UNUSED_FUNC;
-static void * pjson_internal_realloc(UNUSED_VAR void *ctx, void *ptr, unsigned int sz) UNUSED_FUNC INTERNAL_MALLOC_SIZE2;
-
-static void pjson_internal_free(UNUSED_VAR void *ctx, void * ptr) UNUSED_FUNC;
-
-static void * pjson_internal_calloc(void *ctx, size_t nmemb, size_t sz)
-{
-	return calloc(nmemb, sz);
-}
-
-static void * pjson_internal_malloc(void *ctx, size_t nmemb, size_t sz)
-{
-	return malloc(sz * nmemb);
-}
-
-static void * pjson_internal_realloc(void *ctx, void *ptr, unsigned int sz)
-{
-	return realloc(ptr, sz);
-}
-
-static void pjson_internal_free(void *ctx, void * ptr)
-{
-	return free(ptr);
-}
 
 static ActualStream* begin_object(ActualStream* stream)
 {
@@ -234,7 +198,6 @@ static char* finish_stream(ActualStream* stream, StreamStatus *error_code)
 			end_array(stream);
 			break;
 		default:
-			PJ_LOG_ERR("PBNJSON_INVALID_OBJ_TYPE", 1, PMLOGKFV("TYPE", "%d", stream->opened), "Invalid object type: %d", stream->opened);
 			if (error_code) *error_code = GEN_GENERIC_ERROR;
 			goto stream_error;
 	}
@@ -288,7 +251,7 @@ static struct __JStream yajl_stream_generator =
 	(jFinish)finish_stream
 };
 
-JStreamRef jstreamInternal(TopLevelType type)
+JStreamRef jstreamInternal(TopLevelType type, const char *indent)
 {
 	ActualStream* stream = (ActualStream*)calloc(1, sizeof(ActualStream));
 	if (UNLIKELY(stream == NULL)) {
@@ -298,9 +261,16 @@ JStreamRef jstreamInternal(TopLevelType type)
 	memcpy(&stream->stream, &yajl_stream_generator, sizeof(struct __JStream));
 
 #if YAJL_VERSION < 20000
-	stream->handle = yajl_gen_alloc(NULL, NULL);
+	yajl_gen_config conf = {1, indent};
+	stream->handle = yajl_gen_alloc(indent ? &conf : NULL, NULL);
 #else
 	stream->handle = yajl_gen_alloc(NULL);
+	if (indent) {
+		yajl_gen_config(stream->handle, yajl_gen_beautify, 1);
+		if (!yajl_gen_config(stream->handle, yajl_gen_indent_string, indent)) {
+			yajl_gen_config(stream->handle, yajl_gen_indent_string, JGEN_DEFAULT_INDENT);
+		}
+	}
 #endif
 
 	stream->opened = type;

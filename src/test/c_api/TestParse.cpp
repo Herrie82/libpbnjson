@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
-#include <gtest/gtest.h>
 #include <iostream>
 #include <cassert>
 #include <limits>
@@ -25,7 +22,13 @@
 #include <memory>
 #include <algorithm>
 #include <fstream>
-#include <cxx/JSchemaFile.h>
+#include <functional>
+
+#include <gtest/gtest.h>
+
+#include "cxx/JSchemaFile.h"
+
+using namespace std;
 
 void j_release_ref(jvalue * val) {
 	j_release(&val);
@@ -86,6 +89,15 @@ struct jptr_schema : public jptr_generic<jschema>
 	}
 };
 
+std::string getErrorString(jerror *error) {
+	const unsigned int err_size = 70;
+
+	char result[err_size];
+	jerror_to_string(error, result, err_size);
+
+	return result;
+}
+
 TEST(TestParse, testInvalidJson) {
 	JSchemaInfo schemaInfo;
 
@@ -94,6 +106,21 @@ TEST(TestParse, testInvalidJson) {
 	jptr_value parsed{ jdom_parse(j_cstr_to_buffer("}} ..bad value.. {{"), DOMOPT_NOOPT, &schemaInfo) };
 	ASSERT_TRUE( jis_null(parsed) );
 	ASSERT_FALSE( jis_valid(parsed) );
+}
+
+TEST(TestParse, testInvalidJsonError) {
+	jerror *error = nullptr;
+
+	jptr_value parsed{ jdom_create(j_cstr_to_buffer("}} ..bad value.. {{"), jschema_all(), &error) };
+
+	ASSERT_TRUE( jis_null(parsed) );
+	ASSERT_FALSE( jis_valid(parsed) );
+	ASSERT_NE(error, nullptr);
+
+	auto str_err = getErrorString(error);
+	ASSERT_STREQ("Syntax error. parse error: unallowed token at this point in JSON text", str_err.c_str());
+
+	jerror_free(error);
 }
 
 TEST(TestParse, testParseDoubleAccuracy) {
@@ -194,7 +221,7 @@ static bool identical(jvalue_ref obj1, jvalue_ref obj2)
 	return false;
 }
 
-void TestParse_testParseFile(const std::string &fileNameSignature)
+void TestParse_testParseFileOld(const std::string &fileNameSignature)
 {
 	std::string jsonInput = fileNameSignature + ".json";
 	std::string jsonSchema = fileNameSignature + ".schema";
@@ -212,6 +239,24 @@ void TestParse_testParseFile(const std::string &fileNameSignature)
 	EXPECT_FALSE(jis_null(inputMMap));
 
 	EXPECT_TRUE(identical(inputNoMMap, inputMMap));
+}
+
+TEST(TestParse, testParseFileOld)
+{
+	std::vector<std::string> tasks = {"file_parse_test"};
+	for (const auto &task : tasks) TestParse_testParseFileOld(task);
+}
+
+void TestParse_testParseFile(const std::string &fileNameSignature)
+{
+	std::string jsonInput = fileNameSignature + ".json";
+	std::string jsonSchema = fileNameSignature + ".schema";
+
+	jptr_schema schema = jschema_fcreate(jsonSchema.c_str(), nullptr);
+	ASSERT_TRUE (schema != nullptr);
+
+	jptr_value inputNoMMap { jdom_fcreate(jsonInput.c_str(), jschema_all(), nullptr) };
+	EXPECT_FALSE(jis_null(inputNoMMap));
 }
 
 TEST(TestParse, testParseFile)
@@ -314,7 +359,7 @@ void ReadFileToString(const std::string& fileName, std::string& dst)
 	file.read(&dst[0], size);
 }
 
-TEST(TestParse, saxparser)
+TEST(TestParse, OldSaxParser)
 {
 	test_sax_context context;
 
@@ -360,6 +405,41 @@ TEST(TestParse, saxparser)
 	EXPECT_EQ(1, context.object_end_counter);
 }
 
+TEST(TestParse, SaxParser)
+{
+	test_sax_context context;
+
+	std::string json_str;
+	ReadFileToString("../schemas/parse/test_stream_parser.json", json_str);
+
+	jschema_ref schema = jschema_fcreate("../schemas/parse/test_stream_parser.schema", NULL);
+	ASSERT_TRUE(schema);
+
+	jsaxparser_ref parser = jsaxparser_new(schema, &context.callbacks, &context);
+
+	ASSERT_FALSE(parser == NULL);
+
+	for (size_t i = 0; i <  json_str.length(); ++i) {
+		ASSERT_TRUE(jsaxparser_feed(parser, json_str.data() + i, 1));
+	}
+
+	ASSERT_TRUE(jsaxparser_end(parser));
+
+	jsaxparser_release(&parser);
+
+	EXPECT_EQ(1, context.null_counter);
+	EXPECT_EQ(1, context.boolean_counter);
+	EXPECT_EQ(2, context.string_counter);
+	EXPECT_EQ(2, context.number_counter);
+	EXPECT_EQ(1, context.array_start_counter);
+	EXPECT_EQ(1, context.array_end_counter);
+	EXPECT_EQ(1, context.object_start_counter);
+	EXPECT_EQ(5, context.object_key_counter);
+	EXPECT_EQ(1, context.object_end_counter);
+
+	jschema_release(&schema);
+}
+
 raw_buffer from_str_to_buffer(const char* str)
 {
 	raw_buffer ret;
@@ -369,7 +449,7 @@ raw_buffer from_str_to_buffer(const char* str)
 	return ret;
 }
 
-TEST(TestParse, domparser)
+TEST(TestParse, DomParserOld)
 {
 
 	std::string json_str;
@@ -432,4 +512,147 @@ TEST(TestParse, domparser)
 
 	j_release(&jval);
 	jschema_release(&schema);
+}
+
+TEST(TestParse, DomParser)
+{
+
+	std::string json_str;
+	ReadFileToString("../schemas/parse/test_stream_parser.json", json_str);
+
+	jschema_ref schema = jschema_fcreate("../schemas/parse/test_stream_parser.schema", NULL);
+	ASSERT_FALSE(NULL == schema);
+
+	jdomparser_ref parser = jdomparser_new(schema);
+	ASSERT_FALSE(parser == NULL);
+
+	for (size_t i = 0; i <  json_str.length(); ++i) {
+		ASSERT_TRUE(jdomparser_feed(parser, json_str.data() + i, 1));
+	}
+
+	ASSERT_TRUE(jdomparser_end(parser));
+
+	jvalue_ref jval = jdomparser_get_result(parser);
+
+	jdomparser_release(&parser);
+
+	ASSERT_TRUE(jobject_get_exists(jval, from_str_to_buffer("null"), NULL));
+	ASSERT_TRUE(jobject_get_exists(jval, from_str_to_buffer("bool"), NULL));
+	ASSERT_TRUE(jobject_get_exists(jval, from_str_to_buffer("number"), NULL));
+	ASSERT_TRUE(jobject_get_exists(jval, from_str_to_buffer("string"), NULL));
+	ASSERT_TRUE(jobject_get_exists(jval, from_str_to_buffer("array"), NULL));
+
+	bool boolValue = false;
+	jboolean_get(jobject_get(jval, from_str_to_buffer("bool")), &boolValue);
+	EXPECT_EQ(true, boolValue);
+
+	double numValue = 0;
+	jnumber_get_f64(jobject_get(jval, from_str_to_buffer("number")), &numValue);
+	EXPECT_EQ(1.1, numValue);
+
+	raw_buffer str = jstring_get_fast(jobject_get(jval, from_str_to_buffer("string")));
+	EXPECT_EQ(std::string("asd"), std::string(str.m_str, str.m_len));
+
+	jvalue_ref array = jobject_get(jval, from_str_to_buffer("array"));
+	ASSERT_EQ(2, jarray_size(array));
+
+	int array_elem_int = 0;
+	jnumber_get_i32(jarray_get(array, 0), &array_elem_int);
+	EXPECT_EQ(2, array_elem_int);
+
+	str = jstring_get_fast(jarray_get(array, 1));
+	EXPECT_EQ(std::string("qwerty"), std::string(str.m_str, str.m_len));
+
+	j_release(&jval);
+	jschema_release(&schema);
+}
+
+TEST(TestParse, ElementParser)
+{
+	auto parse_fun = [](const string &json, const string &schema_str,
+	                    bool(*typecheck)(jvalue_ref), bool should_pass) -> void
+	{
+		jschema_ref schema = jschema_create(j_cstr_to_buffer(schema_str.c_str()), nullptr);
+		ASSERT_FALSE(NULL == schema);
+
+		jdomparser_ref parser = jdomparser_new(schema);
+		ASSERT_FALSE(parser == NULL);
+
+		ASSERT_EQ(should_pass, jdomparser_feed(parser, json.data(), json.length()) && jdomparser_end(parser));
+
+		if (should_pass)
+		{
+			jvalue_ref value = jdomparser_get_result(parser);
+			ASSERT_EQ(should_pass, typecheck ? typecheck(value) : false);
+			j_release(&value);
+		}
+
+		jdomparser_release(&parser);
+		jschema_release(&schema);
+	};
+
+	auto ASSERT_PASS = bind(parse_fun, placeholders::_1, placeholders::_2, placeholders::_3, true);
+	auto ASSERT_FAIL = bind(parse_fun, placeholders::_1, placeholders::_2, nullptr, false);
+
+	// Object
+	ASSERT_PASS("{}", R"({"type":"object"})", jis_object);
+	ASSERT_FAIL("{}", R"({"type":"array"})");
+	ASSERT_FAIL("{}", R"({"type":"boolean"})");
+	ASSERT_FAIL("{}", R"({"type":"number"})");
+	ASSERT_FAIL("{}", R"({"type":"string"})");
+	ASSERT_FAIL("{}", R"({"type":"null"})");
+
+	// Array
+	ASSERT_PASS("[]", R"({"type":"array"})", jis_array);
+	ASSERT_FAIL("[]", R"({"type":"object"})");
+	ASSERT_FAIL("[]", R"({"type":"boolean"})");
+	ASSERT_FAIL("[]", R"({"type":"number"})");
+	ASSERT_FAIL("[]", R"({"type":"string"})");
+	ASSERT_FAIL("[]", R"({"type":"null"})");
+
+	// Boolean
+	ASSERT_PASS("true", R"({"type":"boolean"})", jis_boolean);
+	ASSERT_FAIL("true", R"({"type":"array"})");
+	ASSERT_FAIL("true", R"({"type":"object"})");
+	ASSERT_FAIL("true", R"({"type":"number"})");
+	ASSERT_FAIL("true", R"({"type":"string"})");
+	ASSERT_FAIL("true", R"({"type":"null"})");
+
+	ASSERT_PASS("false", R"({"type":"boolean"})", jis_boolean);
+	ASSERT_FAIL("false", R"({"type":"array"})");
+	ASSERT_FAIL("false", R"({"type":"object"})");
+	ASSERT_FAIL("false", R"({"type":"number"})");
+	ASSERT_FAIL("false", R"({"type":"string"})");
+	ASSERT_FAIL("false", R"({"type":"null"})");
+
+	// Number
+	ASSERT_PASS("42", R"({"type":"number"})", jis_number);
+	ASSERT_FAIL("42", R"({"type":"array"})");
+	ASSERT_FAIL("42", R"({"type":"object"})");
+	ASSERT_FAIL("42", R"({"type":"boolean"})");
+	ASSERT_FAIL("42", R"({"type":"string"})");
+	ASSERT_FAIL("42", R"({"type":"null"})");
+
+	ASSERT_PASS("-42.115", R"({"type":"number"})", jis_number);
+	ASSERT_FAIL("-42.115", R"({"type":"array"})");
+	ASSERT_FAIL("-42.115", R"({"type":"object"})");
+	ASSERT_FAIL("-42.115", R"({"type":"boolean"})");
+	ASSERT_FAIL("-42.115", R"({"type":"string"})");
+	ASSERT_FAIL("-42.115", R"({"type":"null"})");
+
+	// String
+	ASSERT_PASS(R"("Hello world")", R"({"type":"string"})", jis_string);
+	ASSERT_FAIL(R"("Hello world")", R"({"type":"array"})");
+	ASSERT_FAIL(R"("Hello world")", R"({"type":"object"})");
+	ASSERT_FAIL(R"("Hello world")", R"({"type":"boolean"})");
+	ASSERT_FAIL(R"("Hello world")", R"({"type":"number"})");
+	ASSERT_FAIL(R"("Hello world")", R"({"type":"null"})");
+
+	// Null
+	ASSERT_PASS("null", R"({"type":"null"})", jis_null);
+	ASSERT_FAIL("null", R"({"type":"array"})");
+	ASSERT_FAIL("null", R"({"type":"object"})");
+	ASSERT_FAIL("null", R"({"type":"boolean"})");
+	ASSERT_FAIL("null", R"({"type":"number"})");
+	ASSERT_FAIL("null", R"({"type":"string"})");
 }

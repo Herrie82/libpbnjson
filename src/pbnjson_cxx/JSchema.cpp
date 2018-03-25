@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
-#include <JSchema.h>
-#include <JSchemaFragment.h>
+#include "JSchema.h"
+#include "JValue.h"
+#include "JSchemaFragment.h"
+#include "JSchemaResolverWrapper.h"
 
 #include <pbnjson.h>
-#include <memory>
 
 using namespace std;
 
@@ -45,7 +44,8 @@ const JSchema& JSchema::AllSchema()
 }
 
 JSchema::JSchema(const JSchema& other)
-	: schema(other.schema ? jschema_copy(other.schema) : NULL)
+	: JResult(other)
+	, schema(other.schema ? jschema_copy(other.schema) : NULL)
 {
 }
 
@@ -56,17 +56,17 @@ JSchema::~JSchema()
 
 JSchema& JSchema::operator=(const JSchema& other)
 {
-	if (other.schema == NULL)
+	if (this != &other)
 	{
-		schema = NULL;
+		JSchema(other).swap(*this);
 	}
-	else if (schema != other.schema)
-	{
-		jschema_release(&schema);
-		schema = jschema_copy(other.schema);
-	}
-
 	return *this;
+}
+
+void JSchema::swap(JSchema &other)
+{
+	JResult::swap(other);
+	std::swap(schema, other.schema);
 }
 
 JSchema::JSchema()
@@ -92,6 +92,51 @@ jschema_ref JSchema::peek() const
 void JSchema::set(jschema_ref aSchema)
 {
 	schema = aSchema;
+}
+
+JSchema JSchema::fromString(const JInput &input)
+{
+	JSchema res;
+	res.set(jschema_create(input, &res.error));
+	return res;
+}
+
+JSchema JSchema::fromFile(const char *file)
+{
+	JSchema res;
+	res.set(jschema_fcreate(file, &res.error));
+	return res;
+}
+
+JSchema JSchema::fromJValue(const JValue &value)
+{
+	JSchema res;
+	res.set(jschema_jcreate(value.m_jval, &res.error));
+	return res;
+}
+
+bool JSchema::resolve(JResolver &resolver)
+{
+	JSchemaResolverWrapper resolverWrapper(&resolver);
+	JSchemaResolver schemaResolver = {};
+	schemaResolver.m_resolve = &(resolverWrapper.sax_schema_resolver);
+	schemaResolver.m_userCtxt = &resolverWrapper;
+
+	return jschema_resolve(schema, &schemaResolver);
+}
+
+JResult JSchema::validate(const JValue &value) const
+{
+	JResult res;
+	jvalue_validate(value.peekRaw(), schema, &res.error);
+	return res;
+}
+
+JResult JSchema::apply(JValue &value) const
+{
+	JResult res;
+	jvalue_validate_apply(value.peekRaw(), schema, &res.error);
+	return res;
 }
 
 }

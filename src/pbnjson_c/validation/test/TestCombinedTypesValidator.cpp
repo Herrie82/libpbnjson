@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "../combined_types_validator.h"
 #include "../null_validator.h"
@@ -60,52 +58,52 @@ protected:
 
 TEST_F(TestCombinedTypesValidator, EmptyNull)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_TYPE_NOT_ALLOWED, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestCombinedTypesValidator, EmptyNumber)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("1", 1)), s, this));
 	EXPECT_EQ(VEC_TYPE_NOT_ALLOWED, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestCombinedTypesValidator, EmptyBoolean)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_boolean(true)), s, this));
 	EXPECT_EQ(VEC_TYPE_NOT_ALLOWED, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestCombinedTypesValidator, OnlyNullPositive)
 {
 	combined_types_validator_set_type(v, "null", 4);
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestCombinedTypesValidator, OnlyNullNegativeOnBool)
 {
 	combined_types_validator_set_type(v, "null", 4);
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_boolean(true)), s, this));
 	EXPECT_EQ(VEC_TYPE_NOT_ALLOWED, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestCombinedTypesValidator, OnlyNullNegativeOnString)
 {
 	combined_types_validator_set_type(v, "null", 4);
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_string("a", 1)), s, this));
 	EXPECT_EQ(VEC_TYPE_NOT_ALLOWED, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 class TestCombinedTypesValidatorOnlyNumAndString : public TestCombinedTypesValidator

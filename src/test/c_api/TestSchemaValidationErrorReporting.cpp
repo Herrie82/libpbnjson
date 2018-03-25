@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,40 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <gtest/gtest.h>
 #include <pbnjson.h>
 #include <string>
-#include <memory>
 
 #include "../../pbnjson_c/jschema_types_internal.h"
 #include "../../pbnjson_c/validation/error_code.h"
 
+#include "TestUtils.hpp"
+
 using namespace std;
 
-unique_ptr<jschema, function<void(jschema_ref &)>> mk_schema_ptr(jschema_ref s)
-{
-	unique_ptr<jschema, function<void(jschema_ref &)>>
-		js { s, [](jschema_ref &s) { jschema_release(&s); } };
-	return js;
-}
-
-unique_ptr<jvalue, function<void(jvalue_ref &)>> mk_jvalue_ptr(jvalue_ref v)
-{
-	unique_ptr<jvalue, function<void(jvalue_ref &)>>
-		jv { v, [](jvalue_ref &v) { j_release(&v); } };
-	return jv;
-}
-
-class TestSchemaValidationErrorReporting : public ::testing::Test
+class TestSchemaValidationErrorReportingOld : public ::testing::Test
 {
 protected:
 	JErrorCallbacks errors;
-	unsigned int errorCounter;
+	int errorCounter;
 	int errorCode;
 
-	TestSchemaValidationErrorReporting()
+	TestSchemaValidationErrorReportingOld()
 	{
 		errors.m_parser = &OnError;
 		errors.m_schema = &OnValidationError;
@@ -68,7 +53,7 @@ protected:
 
 	static bool OnValidationError(void *ctxt, JSAXContextRef parseCtxt)
 	{
-		TestSchemaValidationErrorReporting *t = reinterpret_cast<TestSchemaValidationErrorReporting *>(ctxt);
+		TestSchemaValidationErrorReportingOld *t = reinterpret_cast<TestSchemaValidationErrorReportingOld *>(ctxt);
 		assert(t);
 		t->errorCounter++;
 		t->errorCode = parseCtxt->m_error_code;
@@ -78,96 +63,128 @@ protected:
 	bool TestError(const char *schemaStr, const char *json, ValidationErrorCode error)
 	{
 		SetUp();
-		auto schema = mk_schema_ptr(jschema_parse(j_cstr_to_buffer(schemaStr), JSCHEMA_DOM_NOOPT, NULL));
+		auto schema = mk_ptr(jschema_parse(j_cstr_to_buffer(schemaStr), JSCHEMA_DOM_NOOPT, NULL));
 		if (!schema.get())
 			return false;
 
 		JSchemaInfo schemaInfo;
 		jschema_info_init(&schemaInfo, schema.get(), NULL, &errors);
 
-		EXPECT_FALSE(jis_valid(mk_jvalue_ptr(jdom_parse(j_cstr_to_buffer(json), DOMOPT_NOOPT, &schemaInfo)).get()));
+		EXPECT_FALSE(jis_valid(mk_ptr(jdom_parse(j_cstr_to_buffer(json), DOMOPT_NOOPT, &schemaInfo)).get()));
 		EXPECT_EQ(error, errorCode);
 		EXPECT_EQ(1, errorCounter);
 		return errorCounter == 1;
 	}
 };
 
-TEST_F(TestSchemaValidationErrorReporting, Null)
+class TestSchemaValidationErrorReporting : public ::testing::Test
 {
-	EXPECT_TRUE(TestError("{\"type\": \"null\"}", "1", VEC_NOT_NULL));
+protected:
+	bool TestError(const char *schemaStr, const char *json, ValidationErrorCode errorCode)
+	{
+		int len = 0;
+		char buf[128];
+		jerror* error = NULL;
+
+		auto schema = mk_ptr(jschema_create(j_cstr_to_buffer(schemaStr), NULL));
+		if (!schema.get())
+			return false;
+
+		EXPECT_FALSE(jis_valid(mk_ptr(jdom_create(j_cstr_to_buffer(json), schema.get(), &error)).get()));
+		EXPECT_NE(error, nullptr);
+
+		len = jerror_to_string(error, buf, 128);
+		jerror_free(error);
+
+		return len != 0;
+	}
+};
+
+template <typename T>
+/* using SchemaTestDispatcher = T; */
+class SchemaTestDispatcher : public T
+{ };
+
+typedef ::testing::Types<TestSchemaValidationErrorReportingOld, TestSchemaValidationErrorReporting> Implementations;
+
+TYPED_TEST_CASE(SchemaTestDispatcher, Implementations);
+
+TYPED_TEST(SchemaTestDispatcher, Null)
+{
+	EXPECT_TRUE(this->TestError("{\"type\": \"null\"}", "1", VEC_NOT_NULL));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, Number)
+TYPED_TEST(SchemaTestDispatcher, Number)
 {
 	const char *schema = "{\"type\": \"number\", \"minimum\": 1, \"maximum\": 10 }";
-	EXPECT_TRUE(TestError(schema, "null", VEC_NOT_NUMBER));
-	EXPECT_TRUE(TestError(schema, "0", VEC_NUMBER_TOO_SMALL));
-	EXPECT_TRUE(TestError(schema, "100", VEC_NUMBER_TOO_BIG));
-	EXPECT_TRUE(TestError("{\"type\": \"integer\"}", "1.2", VEC_NOT_INTEGER_NUMBER));
+	EXPECT_TRUE(this->TestError(schema, "null", VEC_NOT_NUMBER));
+	EXPECT_TRUE(this->TestError(schema, "0", VEC_NUMBER_TOO_SMALL));
+	EXPECT_TRUE(this->TestError(schema, "100", VEC_NUMBER_TOO_BIG));
+	EXPECT_TRUE(this->TestError("{\"type\": \"integer\"}", "1.2", VEC_NOT_INTEGER_NUMBER));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, Boolean)
+TYPED_TEST(SchemaTestDispatcher, Boolean)
 {
-	EXPECT_TRUE(TestError("{\"type\": \"boolean\"}", "null", VEC_NOT_BOOLEAN));
+	EXPECT_TRUE(this->TestError("{\"type\": \"boolean\"}", "null", VEC_NOT_BOOLEAN));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, String)
+TYPED_TEST(SchemaTestDispatcher, String)
 {
 	const char *schema = "{\"type\": \"string\", \"minLength\": 3, \"maxLength\": 10 }";
-	EXPECT_TRUE(TestError(schema, "null", VEC_NOT_STRING));
-	EXPECT_TRUE(TestError(schema, "\"h\"", VEC_STRING_TOO_SHORT));
-	EXPECT_TRUE(TestError(schema, "\"hello world\"", VEC_STRING_TOO_LONG));
+	EXPECT_TRUE(this->TestError(schema, "null", VEC_NOT_STRING));
+	EXPECT_TRUE(this->TestError(schema, "\"h\"", VEC_STRING_TOO_SHORT));
+	EXPECT_TRUE(this->TestError(schema, "\"hello world\"", VEC_STRING_TOO_LONG));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, Array)
+TYPED_TEST(SchemaTestDispatcher, Array)
 {
 	const char *schema = "{\"type\": \"array\", \"minItems\": 1, \"maxItems\": 3, \"uniqueItems\": true }";
-	EXPECT_TRUE(TestError(schema, "null", VEC_NOT_ARRAY));
-	EXPECT_TRUE(TestError(schema, "[]", VEC_ARRAY_TOO_SHORT));
-	EXPECT_TRUE(TestError(schema, "[1, 2, 3, 4]", VEC_ARRAY_TOO_LONG));
-	EXPECT_TRUE(TestError(schema, "[1, 1]", VEC_ARRAY_HAS_DUPLICATES));
-	EXPECT_TRUE(TestError("{\"type\": \"array\", \"items\": [{}], \"additionalItems\": false }", "[1, 1]", VEC_ARRAY_TOO_LONG));
+	EXPECT_TRUE(this->TestError(schema, "null", VEC_NOT_ARRAY));
+	EXPECT_TRUE(this->TestError(schema, "[]", VEC_ARRAY_TOO_SHORT));
+	EXPECT_TRUE(this->TestError(schema, "[1, 2, 3, 4]", VEC_ARRAY_TOO_LONG));
+	EXPECT_TRUE(this->TestError(schema, "[1, 1]", VEC_ARRAY_HAS_DUPLICATES));
+	EXPECT_TRUE(this->TestError("{\"type\": \"array\", \"items\": [{}], \"additionalItems\": false }", "[1, 1]", VEC_ARRAY_TOO_LONG));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, Object)
+TYPED_TEST(SchemaTestDispatcher, Object)
 {
 	const char *schema = "{\"type\": \"object\", \"minProperties\": 1, \"maxProperties\": 2}";
-	EXPECT_TRUE(TestError(schema, "null", VEC_NOT_OBJECT));
-	EXPECT_TRUE(TestError(schema, "{}", VEC_NOT_ENOUGH_KEYS));
-	EXPECT_TRUE(TestError(schema, "{\"a\": 1, \"b\": 2, \"c\": 3 }", VEC_TOO_MANY_KEYS));
-	EXPECT_TRUE(TestError("{\"type\": \"object\", \"required\": [\"a\", \"b\"] }", "{\"a\": 1 }", VEC_MISSING_REQUIRED_KEY));
-	EXPECT_TRUE(TestError("{\"type\": \"object\", \"properties\": {\"a\": {} }, \"additionalProperties\": false }", "{\"a\": 1, \"b\": 2 }", VEC_OBJECT_PROPERTY_NOT_ALLOWED));
+	EXPECT_TRUE(this->TestError(schema, "null", VEC_NOT_OBJECT));
+	EXPECT_TRUE(this->TestError(schema, "{}", VEC_NOT_ENOUGH_KEYS));
+	EXPECT_TRUE(this->TestError(schema, "{\"a\": 1, \"b\": 2, \"c\": 3 }", VEC_TOO_MANY_KEYS));
+	EXPECT_TRUE(this->TestError("{\"type\": \"object\", \"required\": [\"a\", \"b\"] }", "{\"a\": 1 }", VEC_MISSING_REQUIRED_KEY));
+	EXPECT_TRUE(this->TestError("{\"type\": \"object\", \"properties\": {\"a\": {} }, \"additionalProperties\": false }", "{\"a\": 1, \"b\": 2 }", VEC_OBJECT_PROPERTY_NOT_ALLOWED));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, Types)
+TYPED_TEST(SchemaTestDispatcher, Types)
 {
-	EXPECT_TRUE(TestError("{\"type\": [\"object\", \"array\"] }", "null", VEC_TYPE_NOT_ALLOWED));
+	EXPECT_TRUE(this->TestError("{\"type\": [\"object\", \"array\"] }", "null", VEC_TYPE_NOT_ALLOWED));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, Enum)
+TYPED_TEST(SchemaTestDispatcher, Enum)
 {
-	EXPECT_TRUE(TestError("{\"enum\": [1, false] }", "0", VEC_UNEXPECTED_VALUE));
+	EXPECT_TRUE(this->TestError("{\"enum\": [1, false] }", "0", VEC_UNEXPECTED_VALUE));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, AllOf)
+TYPED_TEST(SchemaTestDispatcher, AllOf)
 {
-	EXPECT_TRUE(TestError("{\"allOf\": [{}, {\"type\": \"string\"} ] }", "0", VEC_NOT_EVERY_ALL_OF));
+	EXPECT_TRUE(this->TestError("{\"allOf\": [{}, {\"type\": \"string\"} ] }", "0", VEC_NOT_EVERY_ALL_OF));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, AnyOf)
+TYPED_TEST(SchemaTestDispatcher, AnyOf)
 {
-	EXPECT_TRUE(TestError("{\"anyOf\": [{\"type\": \"array\"}, {\"type\": \"string\"} ] }", "0", VEC_NEITHER_OF_ANY));
+	EXPECT_TRUE(this->TestError("{\"anyOf\": [{\"type\": \"array\"}, {\"type\": \"string\"} ] }", "0", VEC_NEITHER_OF_ANY));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, OneOf)
+TYPED_TEST(SchemaTestDispatcher, OneOf)
 {
 	const char *schema = "{\"oneOf\": [{\"enum\": [\"hello\"]}, {\"type\": \"string\"} ] }";
-	EXPECT_TRUE(TestError(schema, "\"hello\"", VEC_MORE_THAN_ONE_OF));
-	EXPECT_TRUE(TestError(schema, "null", VEC_NEITHER_OF_ANY));
+	EXPECT_TRUE(this->TestError(schema, "\"hello\"", VEC_MORE_THAN_ONE_OF));
+	EXPECT_TRUE(this->TestError(schema, "null", VEC_NEITHER_OF_ANY));
 }
 
-TEST_F(TestSchemaValidationErrorReporting, Complex)
+TYPED_TEST(SchemaTestDispatcher, Complex)
 {
-	EXPECT_TRUE(TestError("{\"type\": \"string\", \"enum\": [\"hello\"], \"anyOf\": [{}] }", "\"h\"", VEC_UNEXPECTED_VALUE));
-	EXPECT_TRUE(TestError("{\"type\": \"array\", \"anyOf\": [{}], \"uniqueItems\": true }", "[1, 1]", VEC_ARRAY_HAS_DUPLICATES));
+	EXPECT_TRUE(this->TestError("{\"type\": \"string\", \"enum\": [\"hello\"], \"anyOf\": [{}] }", "\"h\"", VEC_UNEXPECTED_VALUE));
+	EXPECT_TRUE(this->TestError("{\"type\": \"array\", \"anyOf\": [{}], \"uniqueItems\": true }", "[1, 1]", VEC_ARRAY_HAS_DUPLICATES));
 }

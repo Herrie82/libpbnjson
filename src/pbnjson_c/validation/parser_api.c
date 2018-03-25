@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "parser_api.h"
 #include "validator.h"
@@ -103,9 +101,6 @@ Validator* parse_schema_n(char const *str, size_t len,
 	yajl_handle yh = yajl_alloc(&callbacks, &yajl_opts, NULL, &yajl_context);
 #else
 	yajl_handle yh = yajl_alloc(&callbacks, NULL, &yajl_context);
-
-	yajl_config(yh, yajl_allow_comments, allow_comments ? 1 : 0);
-	yajl_config(yh, yajl_dont_validate_strings, 1);
 #endif // YAJL_VERSION
 	if (!yh)
 	{
@@ -113,6 +108,10 @@ Validator* parse_schema_n(char const *str, size_t len,
 		return NULL;
 	}
 
+#if YAJL_VERSION >= 20000
+	yajl_config(yh, yajl_allow_comments, allow_comments ? 1 : 0);
+	yajl_config(yh, yajl_dont_validate_strings, 1);
+#endif
 	if (yajl_status_ok != yajl_parse(yh, (const unsigned char *)str, len))
 	{
 		if (jschema_builder_is_ok(&yajl_context))

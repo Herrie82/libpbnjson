@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright 2012-2013 LG Electronics, Inc.
+// Copyright (c) 2012-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <pbnjson.hpp>
 #include <pbnjson.h>
@@ -61,10 +59,10 @@ TEST(JGenerator, serialize_with_schema_validation)
 		std::string serialized = pj::JGenerator::serialize(json, schema);
 		EXPECT_EQ("{\"bool\":false}", serialized);
 
-		serialized = pj::JGenerator::serialize((*json.begin()).second, pbnjson::JSchemaFragment("{}"));
+		serialized = pj::JGenerator::serialize((*json.children().begin()).second, pbnjson::JSchemaFragment("{}"));
 		EXPECT_EQ("", serialized);
 
-		serialized = pj::JGenerator::serialize(pj::Object() << (*json.begin()), pbnjson::JSchemaFragment("{}"));
+		serialized = pj::JGenerator::serialize(pj::Object() << (*json.children().begin()), pbnjson::JSchemaFragment("{}"));
 		EXPECT_EQ("{\"bool\":false}", serialized);
 	}
 
@@ -126,6 +124,11 @@ TEST(JGenerator, serialize_without_schema_validation)
 		pj::JValue json = pj::Object();
 		EXPECT_EQ("{}", pj::JGenerator::serialize(json, true));
 		//Error situation. It is not legal to put JValue, that is not Object or Array, to the Object.
-		EXPECT_EQ("null", pj::JGenerator::serialize(json << pj::JValue(int32_t(1)), true));
+		json << pj::JValue(int32_t(1));
+		EXPECT_EQ("{}", pj::JGenerator::serialize(json, true));
+	}
+	{
+		pj::JValue json;
+		EXPECT_EQ("null", pj::JGenerator::serialize(json, true));
 	}
 }

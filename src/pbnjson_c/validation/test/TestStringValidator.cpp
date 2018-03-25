@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "../string_validator.h"
 #include "../pattern.h"
@@ -60,31 +58,31 @@ protected:
 
 TEST_F(TestStringValidator, Null)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_NOT_STRING, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, String)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMinLengthPositive)
 {
 	string_validator_add_min_length_constraint(v, 3);
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMinLengthPositiveEdge)
 {
 	string_validator_add_min_length_constraint(v, 5);
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMinLengthNegative)
@@ -92,21 +90,21 @@ TEST_F(TestStringValidator, StringWithMinLengthNegative)
 	string_validator_add_min_length_constraint(v, 6);
 	EXPECT_FALSE(validation_check(&(e = validation_event_string("hello", 5)), s, this));
 	EXPECT_EQ(VEC_STRING_TOO_SHORT, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMaxLengthPositive)
 {
 	string_validator_add_max_length_constraint(v, 8);
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMaxLengthPositiveEdge)
 {
 	string_validator_add_max_length_constraint(v, 5);
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMaxLengthNegative)
@@ -114,7 +112,7 @@ TEST_F(TestStringValidator, StringWithMaxLengthNegative)
 	string_validator_add_max_length_constraint(v, 4);
 	EXPECT_FALSE(validation_check(&(e = validation_event_string("hello", 5)), s, this));
 	EXPECT_EQ(VEC_STRING_TOO_LONG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMinMaxLengthPositive)
@@ -122,7 +120,7 @@ TEST_F(TestStringValidator, StringWithMinMaxLengthPositive)
 	string_validator_add_max_length_constraint(v, 8);
 	string_validator_add_min_length_constraint(v, 3);
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMinMaxLengthNegativeLess)
@@ -131,7 +129,7 @@ TEST_F(TestStringValidator, StringWithMinMaxLengthNegativeLess)
 	string_validator_add_min_length_constraint(v, 3);
 	EXPECT_FALSE(validation_check(&(e = validation_event_string("h", 1)), s, this));
 	EXPECT_EQ(VEC_STRING_TOO_SHORT, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, StringWithMinMaxLengthNegativeGreater)
@@ -140,7 +138,7 @@ TEST_F(TestStringValidator, StringWithMinMaxLengthNegativeGreater)
 	string_validator_add_min_length_constraint(v, 3);
 	EXPECT_FALSE(validation_check(&(e = validation_event_string("hello world", 11)), s, this));
 	EXPECT_EQ(VEC_STRING_TOO_LONG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, PatternPositive)
@@ -149,7 +147,7 @@ TEST_F(TestStringValidator, PatternPositive)
 	ASSERT_TRUE(pattern_set_regex((Pattern *)p.get(), "^a[bcd]$"));
 	string_validator_set_pattern(v, ((Pattern *)p.get())->regex);
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("ac", 2)), s, this));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, PatternNegative)
@@ -159,7 +157,7 @@ TEST_F(TestStringValidator, PatternNegative)
 	string_validator_set_pattern(v, ((Pattern *)p.get())->regex);
 	EXPECT_FALSE(validation_check(&(e = validation_event_string("ae", 2)), s, this));
 	EXPECT_EQ(VEC_STRING_NOT_PATTERN, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestStringValidator, ExpectedValue)

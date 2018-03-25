@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <pbnjson.hpp>
 #include <pbnjson.h>
@@ -190,11 +188,12 @@ TEST(JValidator, AllowedTypes)
 					"\"type\" : [\"string\", \"null\"]"
 				"},"
 				"\"any\" : {"
-					"\"type\" : \"any\""
 				"}"
 			"}"
 		"}"
 		);
+
+	EXPECT_TRUE(schema.isInitialized());
 
 	EXPECT_TRUE(JValidator::isValid(Object() << JValue::KeyValue("str", "hello"), schema));
 	EXPECT_FALSE(JValidator::isValid(Object() << JValue::KeyValue("str", true), schema));
@@ -267,6 +266,16 @@ TEST(JValidator, AllowedTypes)
 	EXPECT_TRUE(JValidator::isValid(Object() << JValue::KeyValue("any", JValue()), schema));
 	EXPECT_TRUE(JValidator::isValid(Object() << JValue::KeyValue("any", Array()), schema));
 	EXPECT_TRUE(JValidator::isValid(Object() << JValue::KeyValue("any", Object()), schema));
+}
+
+TEST(JValidator, AllowedTypesInV4)
+{
+	using namespace pbnjson;
+
+	JSchema schema = JSchemaFragment(R"("type" : "any")");
+
+	// JSON Schema v4 doesn't support "type" :"any", so schema is not valid
+	EXPECT_FALSE(schema.isInitialized());
 }
 
 TEST(JValidator, AdditionalPropertiesDisallowed)
@@ -380,6 +389,64 @@ TEST(JValidator, DefaultProperties)
 	ASSERT_FALSE(val_all_schema.hasKey("d"));
 
 	ASSERT_TRUE(JValidator::apply(val_all_schema, schema));
+	ASSERT_TRUE(val_all_schema.hasKey("a"));
+	EXPECT_EQ(val_all_schema["a"], "qwer");
+	ASSERT_TRUE(val_all_schema.hasKey("b"));
+	EXPECT_EQ(val_all_schema["b"], 3.14);
+	ASSERT_TRUE(val_all_schema.hasKey("c"));
+	EXPECT_EQ(val_all_schema["c"], true);
+	ASSERT_TRUE(val_all_schema.hasKey("d"));
+	EXPECT_TRUE(val_all_schema["d"].isNull());
+	ASSERT_TRUE(val_all_schema.hasKey("e"));
+	ASSERT_TRUE(val_all_schema["e"].hasKey("e1"));
+	ASSERT_TRUE(val_all_schema["e"].hasKey("e2"));
+}
+
+TEST(JValidator, DefaultProperties3)
+{
+	using namespace pbnjson;
+
+	JSchema schema = JSchema::fromString(R"(
+		{
+			"type": "object",
+			"properties": {
+				"a": {"type": "string", "default": "hello"},
+				"b": {"type": "number", "default": 3.14},
+				"c": {"type": "boolean", "default": true},
+				"d": {"default": null},
+				"e": {
+					"type": "object",
+					"properties": {
+						"e1": {"type": "string", "default": "asd"},
+						"e2": {"type": "number", "default": 2}
+					}
+				}
+			}
+		}
+		)");
+
+	JDomParser parser;
+	ASSERT_TRUE(parser.parse("{\"a\": \"qwer\"}", schema)) << parser.getError();
+	auto val = parser.getDom();
+	ASSERT_TRUE(val.isObject());
+	ASSERT_TRUE(val.hasKey("a"));
+	EXPECT_EQ(val["a"], "qwer");
+	ASSERT_TRUE(val.hasKey("b"));
+	EXPECT_EQ(val["b"], 3.14);
+	ASSERT_TRUE(val.hasKey("c"));
+	EXPECT_EQ(val["c"], true);
+	ASSERT_TRUE(val.hasKey("d"));
+	EXPECT_TRUE(val["d"].isNull());
+
+	ASSERT_TRUE(parser.parse("{\"a\": \"qwer\", \"e\":{}}", JSchema::AllSchema()));
+	JValue val_all_schema = parser.getDom();
+	ASSERT_TRUE(val_all_schema.isObject());
+	ASSERT_TRUE(val_all_schema.hasKey("a"));
+	ASSERT_FALSE(val_all_schema.hasKey("b"));
+	ASSERT_FALSE(val_all_schema.hasKey("c"));
+	ASSERT_FALSE(val_all_schema.hasKey("d"));
+
+	ASSERT_TRUE(bool(schema.apply(val_all_schema)));
 	ASSERT_TRUE(val_all_schema.hasKey("a"));
 	EXPECT_EQ(val_all_schema["a"], "qwer");
 	ASSERT_TRUE(val_all_schema.hasKey("b"));

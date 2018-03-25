@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "../array_validator.h"
 #include "../array_items.h"
@@ -68,143 +66,143 @@ protected:
 
 TEST_F(TestArrayValidator, Null)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, Number)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_number("1", 1)), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, Boolean)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_boolean(true)), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, String)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_string("hello", 5)), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, ObjectStart)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_obj_start()), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, ObjectKey)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_obj_key("a", 1)), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, ObjectEnd)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_obj_end()), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, ArrayEnd)
 {
-	ASSERT_EQ(1, g_slist_length(s->validator_stack));
+	ASSERT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_arr_end()), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, EmptyArray)
 {
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, AnyValue)
 {
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	// null value
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	// number value
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("2", 1)), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	// boolean value
 	EXPECT_TRUE(validation_check(&(e = validation_event_boolean(true)), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	// string value
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	// empty array value
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(GENERIC_VALIDATOR == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	// non empty array value
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(GENERIC_VALIDATOR == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(GENERIC_VALIDATOR == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	// empty object value
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(GENERIC_VALIDATOR == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	// non empty object value
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(GENERIC_VALIDATOR == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_key("a", 1)), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(GENERIC_VALIDATOR == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(GENERIC_VALIDATOR == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, GeneralValidatorPositive)
 {
 	auto vnum = mk_ptr((Validator *)number_validator_new(), validator_unref);
 	array_items_set_generic_item(items, validator_ref(vnum.get()));
-	EXPECT_EQ(2, ((NumberValidator *)vnum.get())->ref_count);
+	EXPECT_EQ(2U, ((NumberValidator *)vnum.get())->ref_count);
 	ASSERT_EQ(vnum.get(), items->generic_validator);
 	ASSERT_EQ(NULL, items->validators);
 
@@ -212,7 +210,7 @@ TEST_F(TestArrayValidator, GeneralValidatorPositive)
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1", 1)), s, NULL));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("2", 1)), s, NULL));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, GeneralValidatorNegative)
@@ -224,7 +222,7 @@ TEST_F(TestArrayValidator, GeneralValidatorNegative)
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1", 1)), s, NULL));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_NOT_NUMBER, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, GeneralArrayValidatorPositive)
@@ -233,22 +231,22 @@ TEST_F(TestArrayValidator, GeneralArrayValidatorPositive)
 	array_items_set_generic_item(items, validator_ref(varr.get()));
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(varr.get() == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(varr.get() == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1", 1)), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(varr.get() == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, GeneralArrayValidatorNegative)
@@ -257,15 +255,15 @@ TEST_F(TestArrayValidator, GeneralArrayValidatorNegative)
 	array_items_set_generic_item(items, validator_ref(varr.get()));
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(varr.get() == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_NOT_ARRAY, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, GeneralObjectValidatorPositive)
@@ -274,24 +272,24 @@ TEST_F(TestArrayValidator, GeneralObjectValidatorPositive)
 	array_items_set_generic_item(items, validator_ref(vobj.get()));
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(vobj.get() == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(vobj.get() == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_key("a", 1)), s, NULL));
-	EXPECT_EQ(3, g_slist_length(s->validator_stack));
+	EXPECT_EQ(3U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(GENERIC_VALIDATOR == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, GeneralObjectValidatorNegative)
@@ -300,15 +298,15 @@ TEST_F(TestArrayValidator, GeneralObjectValidatorNegative)
 	array_items_set_generic_item(items, validator_ref(vobj.get()));
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_start()), s, NULL));
-	EXPECT_EQ(2, g_slist_length(s->validator_stack));
+	EXPECT_EQ(2U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(vobj.get() == s->validator_stack->data);
 	EXPECT_TRUE(validation_check(&(e = validation_event_obj_end()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_NOT_OBJECT, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, SpecificValidatorsLessThanNeeded)
@@ -320,18 +318,18 @@ TEST_F(TestArrayValidator, SpecificValidatorsLessThanNeeded)
 	array_items_add_item(items, validator_ref(vstr.get()));
 
 	ASSERT_TRUE(v->items);
-	ASSERT_EQ(2, array_items_items_length(v->items));
-	EXPECT_EQ(2, ((NumberValidator *)vnum.get())->ref_count);
-	EXPECT_EQ(2, ((StringValidator *)vstr.get())->ref_count);
+	ASSERT_EQ(2U, array_items_items_length(v->items));
+	EXPECT_EQ(2U, ((NumberValidator *)vnum.get())->ref_count);
+	EXPECT_EQ(2U, ((StringValidator *)vstr.get())->ref_count);
 	EXPECT_EQ(vnum.get(), v->items->validators->data);
 	EXPECT_EQ(vstr.get(), g_list_last(v->items->validators)->data);
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1", 1)), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, SpecificValidatorsPerfectMatch)
@@ -343,13 +341,13 @@ TEST_F(TestArrayValidator, SpecificValidatorsPerfectMatch)
 	array_items_add_item(items, validator_ref(vstr.get()));
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1", 1)), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, SpecificValidatorsMoreThanNeeded)
@@ -361,15 +359,15 @@ TEST_F(TestArrayValidator, SpecificValidatorsMoreThanNeeded)
 	array_items_add_item(items, validator_ref(vstr.get()));
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1", 1)), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_string("hello", 5)), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, AdditionalItemsDisallowedPositive)
@@ -378,11 +376,11 @@ TEST_F(TestArrayValidator, AdditionalItemsDisallowedPositive)
 	validator_set_array_additional_items(&v->base, NULL);
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, AdditionalItemsDisallowedNegative)
@@ -391,12 +389,12 @@ TEST_F(TestArrayValidator, AdditionalItemsDisallowedNegative)
 	validator_set_array_additional_items(&v->base, NULL);
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_ARRAY_TOO_LONG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, AdditionalItemsPositive)
@@ -412,7 +410,7 @@ TEST_F(TestArrayValidator, AdditionalItemsPositive)
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1", 1)), s, NULL));
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("2", 1)), s, NULL));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, AdditionalItemsNegative)
@@ -428,7 +426,7 @@ TEST_F(TestArrayValidator, AdditionalItemsNegative)
 	EXPECT_TRUE(validation_check(&(e = validation_event_number("1", 1)), s, NULL));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_NOT_NUMBER, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, OnlyEmptyArrayAllowedPositive)
@@ -437,9 +435,9 @@ TEST_F(TestArrayValidator, OnlyEmptyArrayAllowedPositive)
 	validator_set_array_additional_items(&v->base, NULL);
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, OnlyEmptyArrayAllowedNegative)
@@ -448,10 +446,10 @@ TEST_F(TestArrayValidator, OnlyEmptyArrayAllowedNegative)
 	validator_set_array_additional_items(&v->base, NULL);
 
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_start()), s, NULL));
-	EXPECT_EQ(1, g_slist_length(s->validator_stack));
+	EXPECT_EQ(1U, g_slist_length(s->validator_stack));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_ARRAY_TOO_LONG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, MinItemsPositive)
@@ -462,7 +460,7 @@ TEST_F(TestArrayValidator, MinItemsPositive)
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_TRUE(validation_check(&(e = validation_event_boolean(true)), s, this));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, MinItemsNegative)
@@ -473,7 +471,7 @@ TEST_F(TestArrayValidator, MinItemsNegative)
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_FALSE(validation_check(&(e = validation_event_arr_end()), s, this));
 	EXPECT_EQ(VEC_ARRAY_TOO_SHORT, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, MaxItemsPositive)
@@ -484,7 +482,7 @@ TEST_F(TestArrayValidator, MaxItemsPositive)
 	EXPECT_TRUE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_TRUE(validation_check(&(e = validation_event_boolean(true)), s, this));
 	EXPECT_TRUE(validation_check(&(e = validation_event_arr_end()), s, NULL));
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }
 
 TEST_F(TestArrayValidator, MaxItemsNegative)
@@ -496,5 +494,5 @@ TEST_F(TestArrayValidator, MaxItemsNegative)
 	EXPECT_TRUE(validation_check(&(e = validation_event_boolean(true)), s, this));
 	EXPECT_FALSE(validation_check(&(e = validation_event_null()), s, this));
 	EXPECT_EQ(VEC_ARRAY_TOO_LONG, error);
-	EXPECT_EQ(0, g_slist_length(s->validator_stack));
+	EXPECT_EQ(0U, g_slist_length(s->validator_stack));
 }

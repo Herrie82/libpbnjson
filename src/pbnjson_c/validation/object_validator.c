@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "object_validator.h"
 #include "validation_state.h"
@@ -22,6 +20,7 @@
 #include "generic_validator.h"
 #include "object_properties.h"
 #include "object_required.h"
+#include "object_pattern_properties.h"
 #include "uri_resolver.h"
 #include <jobject.h>
 #include <string.h>
@@ -36,6 +35,7 @@ typedef struct _MyContext
 	size_t properties_count;
 
 	GHashTable *default_properties; // char const * -> jvalue_ref, doesn't own anything.
+	Validator *pattern_properties_validator;  // May be combined validator if multiple patternProperties matched.
 } MyContext;
 
 static void prepare_default_properties(ObjectValidator *o, ValidationState *s, MyContext *my_ctxt)
@@ -72,14 +72,14 @@ static bool _check(Validator *v, ValidationEvent const *e, ValidationState *s, v
 
 	if (e->type == EV_OBJ_END)
 	{
-		if (vobj->min_properties != -1 && vobj->min_properties > my_ctxt->properties_count)
+		if (vobj->min_properties != -1 && (size_t)vobj->min_properties > my_ctxt->properties_count)
 		{
 			validation_state_notify_error(s, VEC_NOT_ENOUGH_KEYS, ctxt);
 			validation_state_pop_validator(s);
 			return false;
 		}
 
-		// If reuquired keys count doesn't match to the seen required keys,
+		// If required keys count doesn't match to the seen required keys,
 		// that's bad. Please note, that duplicates are handled on the higher
 		// level, where a map is formed.
 		if (vobj->required &&
@@ -110,7 +110,7 @@ static bool _check(Validator *v, ValidationEvent const *e, ValidationState *s, v
 	}
 
 	char key[e->value.string.len + 1];
-	strncpy(key, e->value.string.ptr, e->value.string.len);
+	memcpy(key, e->value.string.ptr, e->value.string.len);
 	key[e->value.string.len] = 0;
 
 	if (vobj->required &&
@@ -121,7 +121,7 @@ static bool _check(Validator *v, ValidationEvent const *e, ValidationState *s, v
 
 	++my_ctxt->properties_count;
 
-	if (vobj->max_properties != -1 && my_ctxt->properties_count > vobj->max_properties)
+	if (vobj->max_properties != -1 && my_ctxt->properties_count > (size_t)vobj->max_properties)
 	{
 		validation_state_notify_error(s, VEC_TOO_MANY_KEYS, ctxt);
 		validation_state_pop_validator(s);
@@ -146,15 +146,27 @@ static bool _check(Validator *v, ValidationEvent const *e, ValidationState *s, v
 		return true;
 	}
 
-	if (!vobj->additional_properties)
+	if (vobj->additional_properties)
 	{
-		validation_state_notify_error(s, VEC_OBJECT_PROPERTY_NOT_ALLOWED, ctxt);
-		validation_state_pop_validator(s);
-		return false;
+		validation_state_push_validator(s, vobj->additional_properties);
+		return true;
 	}
 
-	validation_state_push_validator(s, vobj->additional_properties);
-	return true;
+	// If multiple patterns in patternProperties match, a new combined validator may be created.
+	// Thus, we receive "a copy" of validator, store it into our validation context to unref
+	// it properly later.
+	child = object_pattern_properties_find(vobj->pattern_properties, key);
+	if (child)
+	{
+		validator_unref(my_ctxt->pattern_properties_validator);
+		my_ctxt->pattern_properties_validator = child;
+		validation_state_push_validator(s, child);
+		return true;
+	}
+
+	validation_state_notify_error(s, VEC_OBJECT_PROPERTY_NOT_ALLOWED, ctxt);
+	validation_state_pop_validator(s);
+	return false;
 }
 
 static bool check_generic(Validator *v, ValidationEvent const *e, ValidationState *s, void *ctxt)
@@ -216,6 +228,7 @@ static void _cleanup_state(Validator *v, ValidationState *s)
 	MyContext *my_ctxt = validation_state_pop_context(s);
 	if (my_ctxt->default_properties)
 		g_hash_table_destroy(my_ctxt->default_properties);
+	validator_unref(my_ctxt->pattern_properties_validator);
 	g_slice_free(MyContext, my_ctxt);
 }
 
@@ -283,6 +296,15 @@ static Validator* set_default(Validator *validator, jvalue_ref def_value)
 	return validator;
 }
 
+static Validator* set_pattern_properties(Validator *v, ObjectPatternProperties *p)
+{
+	ObjectValidator *o = (ObjectValidator *) v;
+	if (o->pattern_properties)
+		object_pattern_properties_unref(o->pattern_properties);
+	o->pattern_properties = object_pattern_properties_ref(p);
+	return v;
+}
+
 static jvalue_ref get_default(Validator *validator, ValidationState *s)
 {
 	ObjectValidator *v = (ObjectValidator *) validator;
@@ -302,6 +324,11 @@ static Validator* set_additional_properties_generic(Validator *v, Validator *add
 static Validator* set_required_generic(Validator *v, ObjectRequired *p)
 {
 	return set_required(&object_validator_new()->base, p);
+}
+
+static Validator* set_pattern_properties_generic(Validator *v, ObjectPatternProperties *p)
+{
+	return set_pattern_properties(&object_validator_new()->base, p);
 }
 
 static Validator* set_max_properties_generic(Validator *v, size_t max)
@@ -338,6 +365,7 @@ static void _visit(Validator *v,
 	}
 	if (o->properties)
 		object_properties_visit(o->properties, enter_func, exit_func, ctxt);
+	object_pattern_properties_visit(o->pattern_properties, enter_func, exit_func, ctxt);
 }
 
 static void dump_enter(char const *key, Validator *v, void *ctxt)
@@ -374,6 +402,7 @@ static ValidatorVtable generic_object_vtable =
 	.cleanup_state = cleanup_state_generic,
 	.set_object_properties = set_properties_generic,
 	.set_object_additional_properties = set_additional_properties_generic,
+	.set_object_pattern_properties = set_pattern_properties_generic,
 	.set_object_required = set_required_generic,
 	.set_object_max_properties = set_max_properties_generic,
 	.set_object_min_properties = set_min_properties_generic,
@@ -392,6 +421,7 @@ ValidatorVtable object_vtable =
 	.unref = unref,
 	.set_object_properties = set_properties,
 	.set_object_additional_properties = set_additional_properties,
+	.set_object_pattern_properties = set_pattern_properties,
 	.set_object_required = set_required,
 	.set_object_max_properties = set_max_properties,
 	.set_object_min_properties = set_min_properties,
@@ -419,6 +449,7 @@ void object_validator_release(ObjectValidator *v)
 	object_properties_unref(v->properties);
 	validator_unref(v->additional_properties);
 	object_required_unref(v->required);
+	object_pattern_properties_unref(v->pattern_properties);
 	j_release(&v->def_value);
 	g_free(v);
 }

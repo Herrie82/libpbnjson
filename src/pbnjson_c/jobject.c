@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <stddef.h>
 #include <unistd.h>
@@ -33,8 +31,18 @@
 #include <sys_malloc.h>
 #include <sys/mman.h>
 #include "jobject_internal.h"
-#include "liblog.h"
+#include "jerror_internal.h"
 #include "jvalue/num_conversion.h"
+#include "liblog.h"
+#include "key_dictionary.h"
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <errno.h>
+#include <unistd.h>
+
+#include "dom_string_memory_pool.h"
 
 #ifdef DBG_C_MEM
 #define PJ_LOG_MEM(...) PJ_LOG_INFO(__VA_ARGS__)
@@ -62,30 +70,59 @@ static int s_inGdb = 0;
 
 #define TRACE_REF(format, pointer, ...) PJ_LOG_TRACE("TRACE JVALUE_REF: %p " format, pointer, ##__VA_ARGS__)
 
-// 7 NULL bytes is enough to ensure that any Unicode string will be NULL-terminated
-// even if it is malformed Unicode
-#define SAFE_TERM_NULL_LEN 7
+#define J_CSTR_TO_BUF_EMPLACE(string) { (string), (sizeof(string) - 1) }
+#define J_INVALID_VALUE -50
 
 jvalue JNULL = {
 	.m_type = JV_NULL,
 	.m_refCnt = 1,
-	.m_toString = "null",
-	.m_toStringDealloc = NULL
+	.m_string = {
+		J_CSTR_TO_BUF_EMPLACE("null"),
+		NULL
+	}
 };
 
 jvalue JINVALID = {
 	.m_type = JV_NULL,
 	.m_refCnt = 1,
-	.m_toString = "null /* invalid */",
-	.m_toStringDealloc = NULL
+	.m_string = {
+		J_CSTR_TO_BUF_EMPLACE("null /* invalid */"),
+		NULL
+	}
+};
+
+static jbool JTRUE = {
+	.m_value = {
+		.m_type = JV_BOOL,
+		.m_refCnt = 1,
+		.m_string = {
+			.buffer = J_CSTR_TO_BUF_EMPLACE("true"),
+			.destructor = NULL
+		}
+	},
+	.value = true
+};
+
+static jbool JFALSE = {
+	.m_value = {
+		.m_type = JV_BOOL,
+		.m_refCnt = 1,
+		.m_string = {
+			.buffer = J_CSTR_TO_BUF_EMPLACE("false"),
+			.destructor = NULL
+		}
+	},
+	.value = false
 };
 
 static jstring JEMPTY_STR = {
 	.m_value = {
 		.m_type = JV_STR,
 		.m_refCnt = 1,
-		.m_toString = "",
-		.m_toStringDealloc = NULL
+		.m_string = {
+			J_CSTR_TO_BUF_EMPLACE(""),
+			NULL
+		}
 	},
 	.m_dealloc = NULL,
 	.m_data = {
@@ -101,10 +138,17 @@ static bool jstring_equal_internal3(raw_buffer *str, raw_buffer *other) NON_NULL
 
 static bool jis_const(jvalue_ref val)
 {
-	return val == &JNULL
-	    || UNLIKELY(val == &JEMPTY_STR.m_value)
-	    || UNLIKELY(val == &JINVALID)
-	;
+	assert( val->m_type != JV_NULL || val == &JNULL || val == &JINVALID );
+	assert( val->m_type != JV_BOOL || val == &JTRUE.m_value || val == &JFALSE.m_value );
+
+	switch (val->m_type)
+	{
+	case JV_NULL:
+	case JV_BOOL:
+		return true;
+	default:
+		return UNLIKELY(val == &JEMPTY_STR.m_value);
+	}
 }
 
 bool jbuffer_equal(raw_buffer buffer1, raw_buffer buffer2)
@@ -113,12 +157,26 @@ bool jbuffer_equal(raw_buffer buffer1, raw_buffer buffer2)
 			memcmp(buffer1.m_str, buffer2.m_str, buffer1.m_len) == 0;
 }
 
+void _jbuffer_munmap(_jbuffer *buf)
+{
+	munmap((void *)buf->buffer.m_str, buf->buffer.m_len);
+	SANITY_KILL_POINTER(buf->buffer.m_str);
+	buf->destructor = NULL;
+}
+
+void _jbuffer_free(_jbuffer *buf)
+{
+	free((void *)buf->buffer.m_str);
+	SANITY_KILL_POINTER(buf->buffer.m_str);
+	buf->destructor = NULL;
+}
+
 /**
  * NOTE: The function initializes new JSON value by the given type
  * @param val  The reference to a valid, structure
  * @param type The type of JSON value
  */
-static void jvalue_init (jvalue_ref val, JValueType type)
+void jvalue_init (jvalue_ref val, JValueType type)
 {
 	val->m_refCnt = 1;
 	val->m_type = type;
@@ -126,14 +184,14 @@ static void jvalue_init (jvalue_ref val, JValueType type)
 
 jvalue_ref jvalue_copy (jvalue_ref val)
 {
+	if (val == NULL) return NULL;
+
 	SANITY_CHECK_POINTER(val);
-	CHECK_POINTER_RETURN(val);
 	assert(s_inGdb || val->m_refCnt > 0);
 
 	if (jis_const(val)) return val;
 
-	val->m_refCnt++;
-	TRACE_REF("inc refcnt to %d", val, val->m_refCnt);
+	g_atomic_int_inc(&val->m_refCnt);
 	return val;
 }
 
@@ -162,7 +220,7 @@ jvalue_ref jvalue_duplicate (jvalue_ref val)
 	} else if (jis_array (val)) {
 		ssize_t arrSize = jarray_size (val);
 		result = jarray_create_hint (NULL, arrSize);
-		for (ssize_t i = arrSize - 1; i >= 0; i--) {
+		for (ssize_t i = 0; i < arrSize; ++i) {
 			if (!jarray_append (result, jvalue_duplicate (jarray_get (val, i)))) {
 				j_release (&result);
 				result = NULL;
@@ -172,26 +230,22 @@ jvalue_ref jvalue_duplicate (jvalue_ref val)
 		return result;
 	} else {
 		// string, number, & boolean are immutable, so no need to do an actual duplication
-#if 0
-		return jvalue_copy(val);
-#else
 		if (jis_string(val)) {
 			result = jstring_create_copy(jstring_get_fast(val));
 		} else if (jis_number(val)) {
 			result = jnumber_duplicate(val);
 		} else
 			result = jboolean_create(jboolean_deref_to_value(val));
-#endif
 	}
-
-	TRACE_REF("w/ refcnt of %d, deep copy to %p w/ refcnt of %d",
-	          val, val->m_refCnt, result, result->m_refCnt);
 
 	return result;
 }
 
 static bool jarray_equal(jvalue_ref arr, jvalue_ref other) NON_NULL(1, 2);
 static bool jobject_equal(jvalue_ref obj, jvalue_ref other) NON_NULL(1, 2);
+static int jstring_compare(const jvalue_ref str1, const jvalue_ref str2) NON_NULL(1, 2);
+static int jarray_compare(const jvalue_ref arr1, const jvalue_ref arr2) NON_NULL(1, 2);
+static int jobject_compare(const jvalue_ref obj1, const jvalue_ref obj2) NON_NULL(1, 2);
 
 bool jvalue_equal(jvalue_ref val1, jvalue_ref val2)
 {
@@ -222,11 +276,42 @@ bool jvalue_equal(jvalue_ref val1, jvalue_ref val2)
 	return false;
 }
 
+int jvalue_compare(const jvalue_ref val1, const jvalue_ref val2)
+{
+	SANITY_CHECK_POINTER(val1);
+	SANITY_CHECK_POINTER(val2);
+
+	if (UNLIKELY(val1 == val2))
+		return 0;
+
+	int type_diff = (int)val1->m_type - (int)val2->m_type;
+	if (type_diff != 0)
+		return type_diff;
+
+	switch (val1->m_type) {
+		case JV_NULL:
+			return (int)jis_valid(val1) - (int)jis_valid(val2);
+		case JV_BOOL:
+			return (int)jboolean_deref(val1)->value - (int)jboolean_deref(val2)->value;
+		case JV_NUM:
+			return jnumber_compare(val1, val2);
+		case JV_STR:
+			return jstring_compare(val1, val2);
+		case JV_ARRAY:
+			return jarray_compare(val1, val2);
+		case JV_OBJECT:
+			return jobject_compare(val1, val2);
+	}
+
+	PJ_LOG_ERR("Unknown type - corruption?");
+	assert(false);
+	return 0;
+}
+
 static void j_destroy_object (jvalue_ref obj) NON_NULL(1);
 static void j_destroy_array (jvalue_ref arr) NON_NULL(1);
 static void j_destroy_string (jvalue_ref str) NON_NULL(1);
 static void j_destroy_number (jvalue_ref num) NON_NULL(1);
-static inline void j_destroy_boolean (jvalue_ref boolean) NON_NULL(1);
 
 void j_release (jvalue_ref *val)
 {
@@ -243,53 +328,45 @@ void j_release (jvalue_ref *val)
 
 	assert((*val)->m_refCnt > 0);
 
-	if ((*val)->m_refCnt == 1) {
+	if (g_atomic_int_dec_and_test(&(*val)->m_refCnt)) {
 		TRACE_REF("freeing because refcnt is 0: %s", *val, jvalue_tostring(*val, jschema_all()));
-		if ((*val)->m_toStringDealloc) {
-			PJ_LOG_MEM("Freeing string representation of jvalue %p", (*val)->m_toString);
-			(*val)->m_toStringDealloc ((*val)->m_toString);
+		_jbuffer *str = &(*val)->m_string;
+		if (str->destructor) {
+			PJ_LOG_MEM("Freeing string representation of jvalue %p", str->buffer.m_str);
+			str->destructor(str);
 		}
-		SANITY_KILL_POINTER((*val)->m_toString);
 
-		switch ( (*val)->m_type) {
+		_jbuffer *buf = &(*val)->m_file;
+		if (buf->destructor)
+			buf->destructor(buf);
+
+		PJ_LOG_MEM("Freeing %p", *val);
+		switch ((*val)->m_type) {
 			case JV_OBJECT:
 				j_destroy_object (*val);
+				g_slice_free1(sizeof(jobject), *val);
 				break;
 			case JV_ARRAY:
 				j_destroy_array (*val);
+				g_slice_free1(sizeof(jarray), *val);
 				break;
 			case JV_STR:
 				j_destroy_string (*val);
+				free(*val);
 				break;
 			case JV_NUM:
 				j_destroy_number (*val);
+				g_slice_free1(sizeof(jnum), *val);
 				break;
 			case JV_BOOL:
-				j_destroy_boolean (*val);
-				break;
 			case JV_NULL:
-				PJ_LOG_ERR("PBNJSON_INVALID_STATE", 0, "Invalid program state - should've already returned from j_release before this point");
+				PJ_LOG_ERR("Invalid program state - should've already returned from j_release before this point");
 				assert(false);
 				break;
 		}
-
-		if ((*val)->m_backingBuffer.m_str) {
-			if ((*val)->m_backingBufferMMap) {
-				munmap((void *)(*val)->m_backingBuffer.m_str, (*val)->m_backingBuffer.m_len);
-			} else {
-				free((void *)(*val)->m_backingBuffer.m_str);
-			}
-		}
-
-		SANITY_CLEAR_VAR((*val)->m_refCnt, 0);
-		PJ_LOG_MEM("Freeing %p", *val);
-		free (*val);
 	} else if (UNLIKELY((*val)->m_refCnt < 0)) {
-		PJ_LOG_ERR("PBNJSON_REF_CNT_ERR", 0, "reference counter messed up - memory corruption and/or random crashes are possible");
+		PJ_LOG_ERR("reference counter messed up - memory corruption and/or random crashes are possible");
 		assert(false);
-	} else {
-		(*val)->m_refCnt--;
-		TRACE_REF("decrement ref cnt to %d: %s", *val, (*val)->m_refCnt, jvalue_tostring(*val, jschema_all()));
 	}
 	SANITY_KILL_POINTER(*val);
 }
@@ -393,13 +470,13 @@ static void j_destroy_object (jvalue_ref ref)
 }
 
 /* Has table key routines */
-static guint _ObjKeyHash(gconstpointer key)
+guint ObjKeyHash(gconstpointer key)
 {
 	jvalue_ref jkey = (jvalue_ref) key;
 	return key_hash(jkey);
 }
 
-static gboolean _ObjKeyEqual(gconstpointer a, gconstpointer b)
+gboolean ObjKeyEqual(gconstpointer a, gconstpointer b)
 {
 	jvalue_ref ja = (jvalue_ref) a;
 	jvalue_ref jb = (jvalue_ref) b;
@@ -414,10 +491,10 @@ static void _ObjKeyValDestroy(gpointer data)
 
 jvalue_ref jobject_create ()
 {
-	jobject *new_obj = (jobject *) calloc(1, sizeof(jobject));
+	jobject *new_obj = g_slice_new0(jobject);
 	CHECK_ALLOC_RETURN_NULL(new_obj);
 	jvalue_init((jvalue_ref)new_obj, JV_OBJECT);
-	new_obj->m_members = g_hash_table_new_full(_ObjKeyHash, _ObjKeyEqual,
+	new_obj->m_members = g_hash_table_new_full(ObjKeyHash, ObjKeyEqual,
 	                                           _ObjKeyValDestroy, _ObjKeyValDestroy);
 	if (!new_obj->m_members)
 	{
@@ -438,7 +515,7 @@ static jvalue_ref jobject_put_keyvalue(jvalue_ref obj, jobject_key_value item)
 		j_release(&item.value);
 	}
 	else if (UNLIKELY(!jobject_put(obj, item.key, item.value))) {
-		PJ_LOG_ERR("PBNJSON_OBJ_PUT_KV_ERR", 0, "Failed to insert requested key/value into new object");
+		PJ_LOG_ERR("Failed to insert requested key/value into new object");
 		j_release (&obj);
 		obj = jinvalid();
 	}
@@ -507,6 +584,61 @@ static bool jobject_equal(jvalue_ref obj, jvalue_ref other)
 	return true;
 }
 
+static int qsort_helper(const void* p1, const void* p2)
+{
+	return jstring_compare(* (const jvalue_ref const *)p1, * (const jvalue_ref const *)p2);
+}
+
+static int jobject_compare(const jvalue_ref obj1, const jvalue_ref obj2)
+{
+	SANITY_CHECK_POINTER(obj1);
+	SANITY_CHECK_POINTER(obj2);
+
+	assert(jis_object(obj1));
+	assert(jis_object(obj2));
+
+	const ssize_t obj1_size = jobject_size(obj1);
+	const ssize_t obj2_size = jobject_size(obj2);
+	jvalue_ref obj1_keys[obj1_size];
+	jvalue_ref obj2_keys[obj2_size];
+
+	GHashTableIter iter;
+	g_hash_table_iter_init (&iter, jobject_deref(obj1)->m_members);
+
+	gpointer key;
+	for (ssize_t i = 0; i < obj1_size; ++i)
+	{
+		(void) g_hash_table_iter_next(&iter, &key, NULL);
+		obj1_keys[i] = (jvalue_ref)key;
+	}
+
+	g_hash_table_iter_init (&iter, jobject_deref(obj2)->m_members);
+	for (ssize_t i = 0; i < obj2_size; ++i)
+	{
+		(void) g_hash_table_iter_next(&iter, &key, NULL);
+		obj2_keys[i] = (jvalue_ref)key;
+	}
+
+	qsort(obj1_keys, obj1_size, sizeof(jvalue_ref), qsort_helper);
+	qsort(obj2_keys, obj2_size, sizeof(jvalue_ref), qsort_helper);
+	ssize_t size = obj1_size < obj2_size ? obj1_size : obj2_size;
+
+	for (ssize_t i = 0; i < size; ++i)
+	{
+		int result = jstring_compare(obj1_keys[i], obj2_keys[i]);
+		if (result != 0)
+			return result;
+
+		result = jvalue_compare((jvalue_ref)g_hash_table_lookup(jobject_deref(obj1)->m_members, obj1_keys[i]),
+							   (jvalue_ref)g_hash_table_lookup(jobject_deref(obj2)->m_members, obj2_keys[i]));
+
+		if (result != 0)
+			return result;
+	}
+
+	return obj1_size - obj2_size;
+}
+
 size_t jobject_size(jvalue_ref obj)
 {
 	SANITY_CHECK_POINTER(obj);
@@ -564,6 +696,23 @@ jvalue_ref jobject_get (jvalue_ref obj, raw_buffer key)
 	return jinvalid();
 }
 
+jvalue_ref jobject_get_nested(jvalue_ref obj, ...)
+{
+	const char *key;
+	va_list iter;
+
+	va_start(iter, obj);
+	while ((key = va_arg(iter, const char *))) {
+		if (!jobject_get_exists(obj, j_cstr_to_buffer(key), &obj)) {
+			obj = &JINVALID;
+			break;
+		}
+	}
+	va_end(iter);
+
+	return obj;
+}
+
 bool jobject_remove (jvalue_ref obj, raw_buffer key)
 {
 	SANITY_CHECK_POINTER(obj);
@@ -601,7 +750,7 @@ bool jobject_set (jvalue_ref obj, raw_buffer key, jvalue_ref val)
 
 	newKey = jstring_create_copy (key);
 	if (!jis_valid_unsafe (newKey)) {
-		PJ_LOG_ERR("PBNJSON_JSTR_COPY_ERR", 0, "Failed to create a copy of %.*s", (int)key.m_len, key.m_str);
+		PJ_LOG_ERR("Failed to create a copy of %.*s", (int)key.m_len, key.m_str);
 		j_release (&newVal);
 		return false;
 	}
@@ -614,14 +763,14 @@ bool jobject_set2(jvalue_ref obj, jvalue_ref key, jvalue_ref val)
 	jvalue_ref new_key = jvalue_copy (key);
 	if (UNLIKELY(!new_key))
 	{
-		PJ_LOG_ERR("PBNJSON_SET_KEY_COPY_ERR", 0, "Failed to create a copy of key %p", key);
+		PJ_LOG_ERR("Failed to create a copy of key %p", key);
 		return false;
 	}
 
 	jvalue_ref new_val = jvalue_copy (val);
 	if (UNLIKELY(!new_val))
 	{
-		PJ_LOG_ERR("PBNJSON_SET_VAL_COPY_ERR", 0, "Failed to create a copy of val %p", val);
+		PJ_LOG_ERR("Failed to create a copy of val %p", val);
 		j_release(&new_key);
 		return false;
 	}
@@ -639,7 +788,7 @@ bool jobject_put (jvalue_ref obj, jvalue_ref key, jvalue_ref val)
 
 	do {
 		if (UNLIKELY(!jis_object(obj))) {
-			PJ_LOG_ERR("PBNJSON_NOT_OBJ", 1, PMLOGKFV("TYPE", "%d", obj->m_type), "%p is %d not an object (%d)", obj, obj->m_type, JV_OBJECT);
+			PJ_LOG_ERR("%p is %d not an object (%d)", obj, obj->m_type, JV_OBJECT);
 			break;
 		}
 
@@ -648,32 +797,32 @@ bool jobject_put (jvalue_ref obj, jvalue_ref key, jvalue_ref val)
 		}
 
 		if (UNLIKELY(key == NULL)) {
-			PJ_LOG_ERR("PBNJSON_NULL_KEY", 0, "Invalid API use: null pointer");
+			PJ_LOG_ERR("Invalid API use: null pointer");
 			break;
 		}
 
 		if (UNLIKELY(!jis_string(key))) {
-			PJ_LOG_ERR("PBNJSON_NOT_STR_KEY",  1, PMLOGKFV("TYPE", "%d", key->m_type), "%p is %d not a string (%d)", key, key->m_type, JV_STR);
+			PJ_LOG_ERR("%p is %d not a string (%d)", key, key->m_type, JV_STR);
 			break;
 		}
 
 		if (UNLIKELY(jstring_size(key) == 0)) {
-			PJ_LOG_ERR("PBNJSON_EMPTY_STR_KEY", 0, "Object instance name is the empty string");
+			PJ_LOG_ERR("Object instance name is the empty string");
 			break;
 		}
 
 		if (val == NULL) {
-			PJ_LOG_WARN("PBNJSON_NULL_VALUE", 0, "Please don't pass in NULL - use jnull() instead");
+			PJ_LOG_WARN("Please don't pass in NULL - use jnull() instead");
 			val = jnull ();
 		}
 
 		if (!jis_valid(val)) {
-			PJ_LOG_WARN("PBNJSON_INVALID_TO_JNULL_CNV", 0, "Passed invalid value converted to jnull()");
+			PJ_LOG_WARN("Passed invalid value converted to jnull()");
 			val = jnull ();
 		}
 
 		if (!check_insert_sanity(obj, val)) {
-			PJ_LOG_ERR("PBNJSON_OBJ_PUT_HIERARCHY_ERR", 0, "Error in object hierarchy. Inserting jvalue would create an illegal cyclic dependency");
+			PJ_LOG_ERR("Error in object hierarchy. Inserting jvalue would create an illegal cyclic dependency");
 			break;
 		}
 
@@ -715,7 +864,6 @@ static inline void jarray_size_increment_unsafe (jvalue_ref arr) NON_NULL(1);
 static inline void jarray_size_decrement_unsafe (jvalue_ref arr) NON_NULL(1);
 static jvalue_ref* jarray_get_unsafe (jvalue_ref arr, ssize_t index) NON_NULL(1);
 static inline void jarray_size_set_unsafe (jvalue_ref arr, ssize_t newSize) NON_NULL(1);
-static inline bool jarray_expand_capacity (jvalue_ref arr, ssize_t newSize) NON_NULL(1);
 static bool jarray_expand_capacity_unsafe (jvalue_ref arr, ssize_t newSize) NON_NULL(1);
 static void jarray_remove_unsafe (jvalue_ref arr, ssize_t index) NON_NULL(1);
 
@@ -723,10 +871,10 @@ static bool valid_index_bounded (jvalue_ref arr, ssize_t index) NON_NULL(1);
 static bool valid_index_bounded (jvalue_ref arr, ssize_t index)
 {
 	SANITY_CHECK_POINTER(arr);
-	CHECK_CONDITION_RETURN_VALUE(!jis_array(arr), false, "Trying to test index bounds on non-array %p", arr);
+	CHECK_CONDITION_RETURN_VALUE(arr->m_type != JV_ARRAY, false, "Trying to test index bounds on non-array %p", arr);
 	CHECK_CONDITION_RETURN_VALUE(index < 0, false, "Negative array index %zd", index);
 
-	CHECK_CONDITION_RETURN_VALUE(index >= jarray_size(arr), false, "Index %zd out of bounds of array size %zd", index, jarray_size(arr));
+	CHECK_CONDITION_RETURN_VALUE(index >= jarray_size_unsafe(arr), false, "Index %zd out of bounds of array size %zd", index, jarray_size(arr));
 
 	return true;
 }
@@ -735,29 +883,29 @@ static void j_destroy_array (jvalue_ref arr)
 {
 	SANITY_CHECK_POINTER(arr);
 	SANITY_CHECK_POINTER(jarray_deref(arr)->m_bigBucket);
-	assert(jis_array(arr));
+	assert(arr->m_type == JV_ARRAY);
 
 #ifdef DEBUG_FREED_POINTERS
-	for (ssize_t i = jarray_size(arr); i < jarray_deref(arr)->m_capacity; i++) {
+	for (ssize_t i = jarray_size_unsafe(arr); i < jarray_deref(arr)->m_capacity; i++) {
 		jvalue_ref *outsideValue = jarray_get_unsafe(arr, i);
 		assert(*outsideValue == NULL || *outsideValue == FREED_POINTER);
 	}
 #endif
 
-	assert(jarray_size(arr) >= 0);
+	assert(jarray_size_unsafe(arr) >= 0);
 
-	for (int i = jarray_size(arr) - 1; i >= 0; i--)
+	for (int i = jarray_size_unsafe(arr) - 1; i >= 0; i--)
 		jarray_remove_unsafe(arr, i);
 
-	assert(jarray_size(arr) == 0);
+	assert(jarray_size_unsafe(arr) == 0);
 
 	PJ_LOG_MEM("Destroying array bucket at %p", jarray_deref(arr)->m_bigBucket);
-	SANITY_FREE(free, jvalue_ref *, jarray_deref(arr)->m_bigBucket, jarray_deref(arr)->m_capacity - ARRAY_BUCKET_SIZE);
+	SANITY_FREE(free, jvalue_ref *, jarray_deref(arr)->m_bigBucket, (size_t)(jarray_deref(arr)->m_capacity - ARRAY_BUCKET_SIZE));
 }
 
 jvalue_ref jarray_create (jarray_opts opts)
 {
-	jarray *new_array = (jarray *) calloc(1, sizeof(jarray));
+	jarray *new_array = g_slice_new0(jarray);
 	CHECK_ALLOC_RETURN_NULL(new_array);
 	jvalue_init((jvalue_ref)new_array, JV_ARRAY);
 
@@ -795,9 +943,7 @@ jvalue_ref jarray_create_var (jarray_opts opts, ...)
 jvalue_ref jarray_create_hint (jarray_opts opts, size_t capacityHint)
 {
 	jvalue_ref new_array = jarray_create (opts);
-	if (UNLIKELY(capacityHint == 0)) {
-		PJ_LOG_WARN("PBNJSON_ZERO_ELM_HINT", 0, "Non-recommended use of API providing a hint of 0 elements.  instead, maybe use jarray_create?");
-	} else if (LIKELY(new_array != NULL)) {
+	if (LIKELY(new_array != NULL)) {
 		jarray_expand_capacity_unsafe (new_array, capacityHint);
 	}
 
@@ -840,6 +986,28 @@ static bool jarray_equal(jvalue_ref arr, jvalue_ref other)
 	return true;
 }
 
+static int jarray_compare(const jvalue_ref arr1, const jvalue_ref arr2)
+{
+	SANITY_CHECK_POINTER(arr1);
+	SANITY_CHECK_POINTER(arr2);
+
+	assert(jis_array(arr1));
+	assert(jis_array(arr2));
+
+	ssize_t arr1_size = jarray_size(arr1);
+	ssize_t arr2_size = jarray_size(arr2);
+	ssize_t size = arr1_size < arr2_size ? arr1_size : arr2_size;
+
+	for (ssize_t i = 0; i < size; ++i)
+	{
+		int result = jvalue_compare(jarray_get(arr1, i), jarray_get(arr2, i));
+		if (result != 0)
+			return result;
+	}
+
+	return arr1_size - arr2_size;
+}
+
 ssize_t jarray_size (jvalue_ref arr)
 {
 	SANITY_CHECK_POINTER(arr);
@@ -849,7 +1017,8 @@ ssize_t jarray_size (jvalue_ref arr)
 
 static inline ssize_t jarray_size_unsafe (jvalue_ref arr)
 {
-	assert(jis_array(arr));
+	assert(arr != NULL);
+	assert(arr->m_type == JV_ARRAY);
 
 	return jarray_deref(arr)->m_size;
 }
@@ -865,7 +1034,8 @@ static inline void jarray_size_increment_unsafe (jvalue_ref arr)
 
 static inline void jarray_size_decrement_unsafe (jvalue_ref arr)
 {
-	assert(jis_array(arr));
+	assert(arr != NULL);
+	assert(arr->m_type == JV_ARRAY);
 
 	--jarray_deref(arr)->m_size;
 
@@ -882,7 +1052,8 @@ static inline void jarray_size_set_unsafe (jvalue_ref arr, ssize_t newSize)
 
 static jvalue_ref* jarray_get_unsafe (jvalue_ref arr, ssize_t index)
 {
-	assert(jis_array(arr));
+	assert(arr != NULL);
+	assert(arr->m_type == JV_ARRAY);
 	assert(index >= 0);
 	assert(index < jarray_deref(arr)->m_capacity);
 
@@ -943,15 +1114,6 @@ bool jarray_remove (jvalue_ref arr, ssize_t index)
 	return true;
 }
 
-static inline bool jarray_expand_capacity (jvalue_ref arr, ssize_t newSize)
-{
-	assert(jis_array(arr));
-
-	CHECK_CONDITION_RETURN_VALUE(!jis_array(arr), false, "Attempt to expand something that wasn't a JSON array reference: %p", arr);
-
-	return jarray_expand_capacity_unsafe (arr, newSize);
-}
-
 static bool jarray_expand_capacity_unsafe (jvalue_ref arr, ssize_t newSize)
 {
 	assert(jis_array(arr));
@@ -986,12 +1148,12 @@ static bool jarray_put_unsafe (jvalue_ref arr, ssize_t index, jvalue_ref val)
 	assert(jis_array(arr));
 
 	if (!check_insert_sanity(arr, val)) {
-		PJ_LOG_ERR("PBNJSON_ARR_PUT_HIERARCHY_ERR", 0, "Error in object hierarchy. Inserting jvalue would create an illegal cyclic dependency");
+		PJ_LOG_ERR("Error in object hierarchy. Inserting jvalue would create an illegal cyclic dependency");
 		return false;
 	}
 
 	if (!jarray_expand_capacity_unsafe (arr, index + 1)) {
-		PJ_LOG_WARN("PBNJSON_MEM_ERROR", 0, "Failed to expand array to allocate element - memory allocation problem?");
+		PJ_LOG_WARN("Failed to expand array to allocate element - memory allocation problem?");
 		return false;
 	}
 
@@ -1012,7 +1174,7 @@ bool jarray_set (jvalue_ref arr, ssize_t index, jvalue_ref val)
 	CHECK_CONDITION_RETURN_VALUE(index < 0, false, "Attempt to set array element for %p with negative index value %zd", arr, index);
 
 	if (UNLIKELY(val == NULL)) {
-		PJ_LOG_WARN("PBNJSON_NULL_IN_ARR_SET_FUNC", 0, "incorrect API use - please pass an actual reference to a JSON null if that's what you want - assuming that's what you meant");
+		PJ_LOG_WARN("incorrect API use - please pass an actual reference to a JSON null if that's what you want - assuming that's what you meant");
 		val = jnull ();
 	}
 
@@ -1026,17 +1188,17 @@ bool jarray_put (jvalue_ref arr, ssize_t index, jvalue_ref val)
 {
 	do {
 		if (!jis_array(arr)) {
-			PJ_LOG_ERR("PBNJSON_NOT_ARRAY", 0, "Attempt to insert into non-array %p", arr);
+			PJ_LOG_ERR("Attempt to insert into non-array %p", arr);
 			break;
 		}
 
 		if (index < 0) {
-			PJ_LOG_ERR("PBNJSON_NEG_ARRAY_INDEX", 0, "Attempt to insert array element for %p with negative index value %zd", arr, index);
+			PJ_LOG_ERR("Attempt to insert array element for %p with negative index value %zd", arr, index);
 			break;
 		}
 
 		if (UNLIKELY(val == NULL)) {
-			PJ_LOG_WARN("PBNJSON_NULL_IN_ARR_PUT_FUNC", 0, "incorrect API use - please pass an actual reference to a JSON null if that's what you want - assuming that's the case");
+			PJ_LOG_WARN("incorrect API use - please pass an actual reference to a JSON null if that's what you want - assuming that's the case");
 			val = jnull ();
 		}
 
@@ -1060,7 +1222,7 @@ bool jarray_append (jvalue_ref arr, jvalue_ref val)
 	CHECK_CONDITION_RETURN_VALUE(!jis_array(arr), false, "Attempt to append into non-array %p", arr);
 
 	if (UNLIKELY(val == NULL)) {
-		PJ_LOG_WARN("PBNJSON_NULL_IN_ARR_APPEND_FUNC", 0, "incorrect API use - please pass an actual reference to a JSON null if that's what you want - assuming that's the case");
+		PJ_LOG_WARN("incorrect API use - please pass an actual reference to a JSON null if that's what you want - assuming that's the case");
 		val = jnull ();
 	}
 
@@ -1089,7 +1251,7 @@ bool jarray_insert(jvalue_ref arr, ssize_t index, jvalue_ref val)
 	CHECK_CONDITION_RETURN_VALUE(index < 0, false, "Invalid index - must be >= 0: %zd", index);
 
 	if (!check_insert_sanity(arr, val)) {
-		PJ_LOG_ERR("PBNJSON_ARR_INS_HIERARCHY_ERR", 0, "Error in object hierarchy. Inserting jvalue would create an illegal cyclic dependency");
+		PJ_LOG_ERR("Error in object hierarchy. Inserting jvalue would create an illegal cyclic dependency");
 		return false;
 	}
 
@@ -1151,7 +1313,7 @@ bool jarray_splice (jvalue_ref array, ssize_t index, ssize_t toRemove, jvalue_re
 	CHECK_CONDITION_RETURN_VALUE(toRemove < 0, false, "Invalid amount %zd to remove during splice", toRemove);
 
 	if (!jarray_splice_check_insert_sanity(array, array2)) {
-		PJ_LOG_ERR("PBNJSON_ARR_SPLICE_HIERARCHY_ERR", 0, "Error in object hierarchy. Splicing array would create an illegal cyclic dependency");
+		PJ_LOG_ERR("Error in object hierarchy. Splicing array would create an illegal cyclic dependency");
 		return false;
 	}
 
@@ -1208,7 +1370,7 @@ bool jarray_splice (jvalue_ref array, ssize_t index, ssize_t toRemove, jvalue_re
 					break;
 			}
 			if (UNLIKELY(!jarray_insert(array, i, valueToInsert))) {
-				PJ_LOG_ERR("PBNJSON_ARR_INSERT_ERR", 0, "How did this happen? Failed to insert %zd from second array into %zd of first array", j, i);
+				PJ_LOG_ERR("How did this happen? Failed to insert %zd from second array into %zd of first array", j, i);
 				return false;
 			}
 		}
@@ -1261,27 +1423,30 @@ bool jarray_has_duplicates(jvalue_ref arr)
 
 static void j_destroy_string (jvalue_ref str)
 {
+	SANITY_CHECK_POINTER(str);
 	assert(jstring_deref(str) != &JEMPTY_STR);
 	SANITY_CHECK_JSTR_BUFFER(str);
 #ifdef _DEBUG
 	if (str == NULL) {
-		PJ_LOG_ERR("PBNJSON_NULL_STR", 0, "Internal error - string reference to release the string buffer for is NULL");
+		PJ_LOG_ERR("Internal error - string reference to release the string buffer for is NULL");
 		return;
 	}
 #endif
 	if (jstring_deref(str)->m_dealloc) {
 		PJ_LOG_MEM("Destroying string %p", jstring_deref(str)->m_data.m_str);
-		SANITY_CLEAR_MEMORY(jstring_deref(str)->m_data.m_str, jstring_deref(str)->m_data.m_len);
-		SANITY_FREE_CUST(jstring_deref(str)->m_dealloc, char *, jstring_deref(str)->m_data.m_str, jstring_deref(str)->m_data.m_len);
+		jstring_deref(str)->m_dealloc((char*)jstring_deref(str)->m_data.m_str);
 	}
 	PJ_LOG_MEM("Changing string %p to NULL for %p", jstring_deref(str)->m_data.m_str, str);
 	SANITY_KILL_POINTER(jstring_deref(str)->m_data.m_str);
 	SANITY_CLEAR_VAR(jstring_deref(str)->m_data.m_len, -1);
 }
 
+bool jis_string_unsafe (jvalue_ref str)
+{ return str->m_type == JV_STR; }
+
 static unsigned long key_hash (jvalue_ref key)
 {
-	assert(jis_string(key));
+	assert(jis_string_unsafe(key));
 	return key_hash_raw (&jstring_deref(key)->m_data);
 }
 
@@ -1303,21 +1468,16 @@ jvalue_ref jstring_create_utf8 (const char *cstring, ssize_t length)
 
 jvalue_ref jstring_create_copy (raw_buffer str)
 {
-	char *copyBuffer;
-	copyBuffer = calloc (str.m_len + SAFE_TERM_NULL_LEN, sizeof(char));
-	if (copyBuffer == NULL) {
-		PJ_LOG_ERR("PBNJSON_STR_CALLOC_ERR", 0, "Failed to allocate space for private string copy");
-		return jinvalid();
-	}
-	memcpy(copyBuffer, str.m_str, str.m_len);
-
-	jvalue_ref new_str = jstring_create_nocopy_full(j_str_to_buffer(copyBuffer, str.m_len), free);
+	// size include 1 byte for ASCII and UTF-8 terminator
+	jstring_inline *new_str = (jstring_inline*) calloc (1, sizeof(jstring_inline) + str.m_len + 1);
 	CHECK_POINTER_RETURN_NULL(new_str);
+	jvalue_init((jvalue_ref)new_str, JV_STR);
 
-	jstring_deref(new_str)->m_data.m_len = str.m_len;
-	SANITY_CHECK_JSTR_BUFFER(new_str);
+	memcpy(new_str->m_buf, str.m_str, str.m_len);
+	new_str->m_header.m_dealloc = NULL;
+	new_str->m_header.m_data = j_str_to_buffer(new_str->m_buf, str.m_len);
 
-	return new_str;
+	return (jvalue_ref)new_str;
 }
 
 bool jis_string (jvalue_ref str)
@@ -1329,7 +1489,44 @@ bool jis_string (jvalue_ref str)
 	CHECK_POINTER_RETURN_VALUE(str, false);
 	assert(s_inGdb || str->m_refCnt > 0);
 
-	return str->m_type == JV_STR;
+	return jis_string_unsafe(str);
+}
+
+jvalue_ref jstring_create_from_pool_internal(dom_string_memory_pool* pool, const char *data, size_t len)
+{
+	jstring *string = calloc(1, sizeof(jstring));
+	CHECK_POINTER_RETURN_NULL(string);
+
+	char *buffer = dom_string_memory_pool_alloc(pool, len + 1);
+	memcpy(buffer, data, len);
+	buffer[len] = '\0';
+
+	jvalue_init((jvalue_ref)string, JV_STR);
+
+	string->m_dealloc = dom_string_memory_pool_mark_as_free;
+	string->m_data = j_str_to_buffer(buffer, len);
+
+	return (jvalue_ref)string;
+}
+
+jvalue_ref jnumber_create_from_pool_internal(dom_string_memory_pool* pool, const char *data, size_t len)
+{
+	assert(data != NULL && len > 0);
+
+	jnum *new_number = g_slice_new0(jnum);
+	CHECK_ALLOC_RETURN_NULL(new_number);
+	jvalue_init((jvalue_ref)new_number, JV_NUM);
+
+	char *buffer = dom_string_memory_pool_alloc(pool, len + 1);
+	memcpy(buffer, data, len);
+	buffer[len] = '\0';
+
+	new_number->m_type = NUM_RAW;
+	new_number->value.raw = j_str_to_buffer(buffer, len);
+	new_number->m_rawDealloc = dom_string_memory_pool_mark_as_free;
+
+	TRACE_REF("created", new_number);
+	return (jvalue_ref)new_number;
 }
 
 jvalue_ref jstring_create_nocopy (raw_buffer val)
@@ -1429,7 +1626,7 @@ bool jstring_equal (jvalue_ref str, jvalue_ref other)
 	SANITY_CHECK_JSTR_BUFFER(other);
 
 	if (UNLIKELY(!jis_string(str) || !jis_string(other))) {
-		PJ_LOG_WARN("PBNJSON_NOT_STR_IN_STREQUAL_FUNC", 0, "attempting to check string equality but not using a JSON string");
+		PJ_LOG_WARN("attempting to check string equality but not using a JSON string");
 		return false;
 	}
 
@@ -1439,11 +1636,27 @@ bool jstring_equal (jvalue_ref str, jvalue_ref other)
 bool jstring_equal2 (jvalue_ref str, raw_buffer other)
 {
 	if (UNLIKELY(!jis_string(str))) {
-		PJ_LOG_WARN("PBNJSON_NOT_STR_IN_STREQUAL_FUNC", 0, "attempting to check string equality but not a JSON string");
+		PJ_LOG_WARN("attempting to check string equality but not a JSON string");
 		return false;
 	}
 
 	return jstring_equal_internal2(str, &other);
+}
+
+static int jstring_compare(const jvalue_ref str1, const jvalue_ref str2)
+{
+	SANITY_CHECK_JSTR_BUFFER(str1);
+	SANITY_CHECK_JSTR_BUFFER(str2);
+
+	ssize_t str1_size = jstring_size(str1);
+	ssize_t str2_size = jstring_size(str2);
+	ssize_t size = str1_size < str2_size ? str1_size : str2_size;
+
+	int result = memcmp(jstring_deref(str1)->m_data.m_str, jstring_deref(str2)->m_data.m_str, size);
+	if (result != 0)
+		return result;
+
+	return str1_size - str2_size;
 }
 
 /******************************** JSON NUMBER API **************************************/
@@ -1451,7 +1664,7 @@ bool jstring_equal2 (jvalue_ref str, raw_buffer other)
 static void j_destroy_number (jvalue_ref num)
 {
 	SANITY_CHECK_POINTER(num);
-	assert(jis_number(num));
+	assert(num->m_type == JV_NUM);
 
 	if (jnum_deref(num)->m_type != NUM_RAW) {
 		return;
@@ -1516,7 +1729,7 @@ jvalue_ref jnumber_create_unsafe (raw_buffer str, jdeallocator strFree)
 	CHECK_POINTER_RETURN_VALUE(str.m_str, jinvalid());
 	CHECK_CONDITION_RETURN_VALUE(str.m_len == 0, jinvalid(), "Invalid length parameter for numeric string %s", str.m_str);
 
-	jnum *new_number = (jnum *) calloc(1, sizeof(jnum));
+	jnum *new_number = g_slice_new0(jnum);
 	CHECK_ALLOC_RETURN_NULL(new_number);
 	jvalue_init((jvalue_ref)new_number, JV_NUM);
 
@@ -1533,7 +1746,7 @@ jvalue_ref jnumber_create_f64 (double number)
 	CHECK_CONDITION_RETURN_VALUE(isnan(number), jinvalid(), "NaN has no representation in JSON");
 	CHECK_CONDITION_RETURN_VALUE(isinf(number), jinvalid(), "Infinity has no representation in JSON");
 
-	jnum *new_number = (jnum *) calloc(1, sizeof(jnum));
+	jnum *new_number = g_slice_new0(jnum);
 	CHECK_ALLOC_RETURN_NULL(new_number);
 	jvalue_init((jvalue_ref)new_number, JV_NUM);
 
@@ -1551,7 +1764,7 @@ jvalue_ref jnumber_create_i32 (int32_t number)
 
 jvalue_ref jnumber_create_i64 (int64_t number)
 {
-	jnum *new_number = (jnum *) calloc(1, sizeof(jnum));
+	jnum *new_number = g_slice_new0(jnum);
 	CHECK_ALLOC_RETURN_NULL(new_number);
 	jvalue_init((jvalue_ref)new_number, JV_NUM);
 
@@ -1564,14 +1777,14 @@ jvalue_ref jnumber_create_i64 (int64_t number)
 
 jvalue_ref jnumber_create_converted(raw_buffer raw)
 {
-	jnum *new_number = (jnum *) calloc(1, sizeof(jnum));
+	jnum *new_number = g_slice_new0(jnum);
 	CHECK_ALLOC_RETURN_NULL(new_number);
 	jvalue_init((jvalue_ref)new_number, JV_NUM);
 
 	if (CONV_OK != jstr_to_i64(&raw, &new_number->value.integer)) {
 		new_number->m_error = jstr_to_double(&raw, &new_number->value.floating);
 		if (new_number->m_error != CONV_OK) {
-			PJ_LOG_ERR("PBNJSON_BAD_NUM_CONV", 1, PMLOGKS("STRING", raw.m_str), "Number '%.*s' doesn't convert perfectly to a native type",
+			PJ_LOG_ERR("Number '%.*s' doesn't convert perfectly to a native type",
 					(int)raw.m_len, raw.m_str);
 			assert(false);
 		}
@@ -1601,18 +1814,15 @@ int jnumber_compare(jvalue_ref number, jvalue_ref toCompare)
 			if (CONV_OK == jstr_to_i64(&jnum_deref(toCompare)->value.raw, &asInt))
 				return jnumber_compare_i64(number, asInt);
 			if (CONV_OK != jstr_to_double(&jnum_deref(toCompare)->value.raw, &asFloat)) {
-				PJ_LOG_ERR("PBNJSON_BAD_NUM_CMP", 2,
-				           PMLOGKS("NUM", jnum_deref(number)->value.raw.m_str),
-				           PMLOGKS("NUM", jnum_deref(toCompare)->value.raw.m_str),
-				           "Comparing against something that can't be represented as a float: '%.*s'",
-				           (int)jnum_deref(toCompare)->value.raw.m_len, jnum_deref(toCompare)->value.raw.m_str);
+				PJ_LOG_ERR("Comparing against something that can't be represented as a float: '%.*s'",
+						(int)jnum_deref(toCompare)->value.raw.m_len, jnum_deref(toCompare)->value.raw.m_str);
 			}
 			return jnumber_compare_f64(number, asFloat);
 		}
 		default:
-			PJ_LOG_ERR("PBNJSON_NUM_CMP_UNKNOWN_TYPE", 1, PMLOGKFV("TYPE", "%d", jnum_deref(toCompare)->m_type), "Unknown type for toCompare - corruption?");
+			PJ_LOG_ERR("Unknown type for toCompare - corruption?");
 			assert(false);
-			return -50;
+			return J_INVALID_VALUE;
 	}
 }
 
@@ -1637,18 +1847,15 @@ int jnumber_compare_i64(jvalue_ref number, int64_t toCompare)
 			}
 			double asFloat;
 			if (CONV_OK != jstr_to_double(&jnum_deref(number)->value.raw, &asFloat)) {
-				PJ_LOG_ERR("PBNJSON_BAD_NUM_CMP", 2,
-				           PMLOGKFV("NUM", "%"PRId64, toCompare),
-				           PMLOGKS("NUM", jnum_deref(number)->value.raw.m_str),
-				           "Comparing '%"PRId64 "' against something that can't be represented as a float: '%.*s'",
-				           toCompare, (int)jnum_deref(number)->value.raw.m_len, jnum_deref(number)->value.raw.m_str);
+				PJ_LOG_ERR("Comparing '%"PRId64 "' against something that can't be represented as a float: '%.*s'",
+						toCompare, (int)jnum_deref(number)->value.raw.m_len, jnum_deref(number)->value.raw.m_str);
 			}
 			return asFloat > toCompare ? 1 : (asFloat < toCompare ? -1 : 0);
 		}
 		default:
-			PJ_LOG_ERR("PBNJSON_NUM_CMP_I64_UNKNOWN_TYPE", 1, PMLOGKFV("TYPE", "%d", jnum_deref(number)->m_type), "Unknown type - corruption?");
+			PJ_LOG_ERR("Unknown type - corruption?");
 			assert(false);
-			return -50;
+			return J_INVALID_VALUE;
 	}
 }
 
@@ -1673,18 +1880,15 @@ int jnumber_compare_f64(jvalue_ref number, double toCompare)
 			}
 			double asFloat;
 			if (CONV_OK != jstr_to_double(&jnum_deref(number)->value.raw, &asFloat)) {
-				PJ_LOG_ERR("PBNJSON_BAD_NUM_CMP", 2,
-				           PMLOGKFV("NUM", "%lf", toCompare),
-				           PMLOGKS("NUM", jnum_deref(number)->value.raw.m_str),
-				           "Comparing '%lf' against something that can't be represented as a float: '%.*s'",
-				           toCompare, (int)jnum_deref(number)->value.raw.m_len, jnum_deref(number)->value.raw.m_str);
+				PJ_LOG_ERR("Comparing '%lf' against something that can't be represented as a float: '%.*s'",
+						toCompare, (int)jnum_deref(number)->value.raw.m_len, jnum_deref(number)->value.raw.m_str);
 			}
 			return asFloat > toCompare ? 1 : (asFloat < toCompare ? -1 : 0);
 		}
 		default:
-			PJ_LOG_ERR("PBNJSON_NUM_CMP_F64_UNKNOWN_TYPE", 1, PMLOGKFV("TYPE", "%d", jnum_deref(number)->m_type), "Unknown type - corruption?");
+			PJ_LOG_ERR("Unknown type - corruption?");
 			assert(false);
-			return -50;
+			return J_INVALID_VALUE;
 	}
 }
 
@@ -1707,7 +1911,7 @@ int64_t jnumber_deref_i64(jvalue_ref num)
 	int64_t result;
 	ConversionResultFlags fail;
 	if (CONV_OK != (fail = jnumber_get_i64(num, &result))) {
-		PJ_LOG_WARN("PBNJSON_JVAL_TO_INT64_ERR", 1, PMLOGKFV("ERROR", "%d", fail), "Converting json value to a 64-bit integer but ignoring the conversion error: %d", fail);
+		PJ_LOG_WARN("Converting JSON value to a 64-bit integer but ignoring the conversion error: %d", fail);
 	}
 	return result;
 }
@@ -1741,8 +1945,7 @@ ConversionResultFlags jnumber_get_i32 (jvalue_ref num, int32_t *number)
 			assert(jnum_deref(num)->value.raw.m_len > 0);
 			return jstr_to_i32 (&jnum_deref(num)->value.raw, number) | jnum_deref(num)->m_error;
 		default:
-			PJ_LOG_ERR("PBNJSON_NUM_GET_I32_UNKNOWN_TYPE", 1, PMLOGKFV("TYPE", "%d", (int)jnum_deref(num)->m_type),
-			           "internal error - numeric type is unrecognized (%d)", (int)jnum_deref(num)->m_type);
+			PJ_LOG_ERR("internal error - numeric type is unrecognized (%d)", (int)jnum_deref(num)->m_type);
 			assert(false);
 			return CONV_GENERIC_ERROR;
 	}
@@ -1767,8 +1970,7 @@ ConversionResultFlags jnumber_get_i64 (jvalue_ref num, int64_t *number)
 			assert(jnum_deref(num)->value.raw.m_len > 0);
 			return jstr_to_i64 (&jnum_deref(num)->value.raw, number) | jnum_deref(num)->m_error;
 		default:
-			PJ_LOG_ERR("PBNJSON_NUM_GET_I64_UNKNOWN_TYPE", 1, PMLOGKFV("TYPE", "%d", (int)jnum_deref(num)->m_type),
-			           "internal error - numeric type is unrecognized (%d)", (int)jnum_deref(num)->m_type);
+			PJ_LOG_ERR("internal error - numeric type is unrecognized (%d)", (int)jnum_deref(num)->m_type);
 			assert(false);
 			return CONV_GENERIC_ERROR;
 	}
@@ -1793,8 +1995,7 @@ ConversionResultFlags jnumber_get_f64 (jvalue_ref num, double *number)
 			assert(jnum_deref(num)->value.raw.m_len > 0);
 			return jstr_to_double (&jnum_deref(num)->value.raw, number) | jnum_deref(num)->m_error;
 		default:
-			PJ_LOG_ERR("PBNJSON_NUM_GET_F64_UNKNOWN_TYPE", 1, PMLOGKFV("TYPE", "%d", (int)jnum_deref(num)->m_type),
-			           "internal error - numeric type is unrecognized (%d)", (int)jnum_deref(num)->m_type);
+			PJ_LOG_ERR("internal error - numeric type is unrecognized (%d)", (int)jnum_deref(num)->m_type);
 			assert(false);
 			return CONV_GENERIC_ERROR;
 	}
@@ -1818,8 +2019,7 @@ ConversionResultFlags jnumber_get_raw (jvalue_ref num, raw_buffer *result)
 			*result = jnum_deref(num)->value.raw;
 			return CONV_OK;
 		default:
-			PJ_LOG_ERR("PBNJSON_NUM_GET_RAW_UNKNOWN_TYPE", 1, PMLOGKFV("TYPE", "%d", (int)jnum_deref(num)->m_type),
-			           "internal error - numeric type is unrecognized (%d)", (int)jnum_deref(num)->m_type);
+			PJ_LOG_ERR("internal error - numeric type is unrecognized (%d)", (int)jnum_deref(num)->m_type);
 			assert(false);
 			return CONV_GENERIC_ERROR;
 	}
@@ -1827,26 +2027,22 @@ ConversionResultFlags jnumber_get_raw (jvalue_ref num, raw_buffer *result)
 
 /*** JSON Boolean operations ***/
 
-static inline void j_destroy_boolean (jvalue_ref boolean)
-{
-}
-
 bool jis_boolean (jvalue_ref jval)
 {
 	SANITY_CHECK_POINTER(jval);
 	assert(s_inGdb || jval->m_refCnt > 0);
+	assert( jval->m_type != JV_BOOL || jval == &JTRUE.m_value || jval == &JFALSE.m_value );
 	return jval->m_type == JV_BOOL;
 }
 
+jvalue_ref jboolean_true()
+{ return &JTRUE.m_value; }
+
+jvalue_ref jboolean_false()
+{ return &JFALSE.m_value; }
+
 jvalue_ref jboolean_create (bool value)
-{
-	jbool *new_bool = (jbool *) calloc(1, sizeof(jbool));
-	CHECK_ALLOC_RETURN_NULL(new_bool);
-	jvalue_init((jvalue_ref)new_bool, JV_BOOL);
-	new_bool->value = value;
-	TRACE_REF("created", new_bool);
-	return (jvalue_ref)new_bool;
-}
+{ return value ? jboolean_true() : jboolean_false(); }
 
 bool jboolean_deref_to_value (jvalue_ref boolean)
 {
@@ -1878,6 +2074,7 @@ ConversionResultFlags jboolean_get (jvalue_ref val, bool *value)
 	CHECK_POINTER_MSG_RETURN_VALUE(val, CONV_NOT_A_BOOLEAN, "Attempting to use a C NULL as a JSON value reference");
 	CHECK_POINTER_MSG_RETURN_VALUE(value, (jis_boolean(val) ? CONV_OK : CONV_NOT_A_BOOLEAN), "Non-recommended API use - value is not pointing to a valid boolean");
 	assert(val->m_refCnt > 0);
+	assert( val->m_type != JV_BOOL || val == &JTRUE.m_value || val == &JFALSE.m_value );
 
 	switch (val->m_type) {
 		case JV_BOOL:
@@ -1885,26 +2082,26 @@ ConversionResultFlags jboolean_get (jvalue_ref val, bool *value)
 			return CONV_OK;
 
 		case JV_NULL:
-			PJ_LOG_WARN("PBNJSON_NULL_TO_BOOL_CNV", 0, "Attempting to convert NULL to boolean");
+			PJ_LOG_INFO("Attempting to convert NULL to boolean");
 			if (value) *value = false;
 			break;
 		case JV_OBJECT:
-			PJ_LOG_WARN("PBNJSON_OBJ_TO_BOOL_CNV", 0, "Attempting to convert an object to a boolean - always true");
+			PJ_LOG_WARN("Attempting to convert an object to a boolean - always true");
 			if (value) *value = true;
 			break;
 		case JV_ARRAY:
-			PJ_LOG_WARN("PBNJSON_ARR_TO_BOOL_CNV", 0, "Attempting to convert an array to a boolean - always true");
+			PJ_LOG_WARN("Attempting to convert an array to a boolean - always true");
 			if (value) *value = true;
 			break;
 		case JV_STR:
-			PJ_LOG_WARN("PBNJSON_STR_TO_BOOL_CNV", 0, "Attempt to convert a string to a boolean - testing if string is empty");
+			PJ_LOG_WARN("Attempt to convert a string to a boolean - testing if string is empty");
 			if (value) *value = jstring_size (val) != 0;
 			break;
 		case JV_NUM:
 		{
 			double result;
 			ConversionResultFlags conv_result;
-			PJ_LOG_WARN("PBNJSON_NUM_TO_BOOL_CNV", 0, "Attempting to convert a number to a boolean - testing if number is 0");
+			PJ_LOG_WARN("Attempting to convert a number to a boolean - testing if number is 0");
 			conv_result = jnumber_get_f64 (val, &result);
 			if (value) *value = (conv_result == CONV_OK && result != 0);
 			break;
@@ -1914,3 +2111,47 @@ ConversionResultFlags jboolean_get (jvalue_ref val, bool *value)
 	return CONV_NOT_A_BOOLEAN;
 }
 
+bool j_fopen(const char *file, _jbuffer *buf, jerror **err)
+{
+	CHECK_POINTER_RETURN_VALUE(file, false);
+
+	int fd = open(file, O_RDONLY);
+	if (fd == -1) {
+		jerror_set_formatted(err, JERROR_TYPE_INVALID_PARAMETERS,
+		                     "Can't open file: %s", file);
+		return false;
+	}
+
+	bool result = j_fopen2(fd, buf, err);
+
+	close(fd);
+
+	return result;
+}
+
+bool j_fopen2(int fd, _jbuffer *buf, jerror **err)
+{
+	struct stat finfo;
+	raw_buffer input = { 0 };
+
+	if (fstat(fd, &finfo) != 0) {
+		jerror_set_formatted(err, JERROR_TYPE_INVALID_PARAMETERS,
+		                     "Can't read file size: %s", strerror(errno));
+		return false;
+	}
+	input.m_len = finfo.st_size;
+
+	input.m_str = (char *)mmap(NULL, input.m_len, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, fd, 0);
+	if (input.m_str == NULL || input.m_str == MAP_FAILED) {
+		jerror_set_formatted(err, JERROR_TYPE_INVALID_PARAMETERS,
+		                     "Can't map file: %s",
+		                     strerror(errno));
+		return false;
+	}
+	madvise((void *)input.m_str, input.m_len, MADV_SEQUENTIAL | MADV_WILLNEED);
+
+	buf->buffer = input;
+	buf->destructor = _jbuffer_munmap;
+
+	return true;
+}

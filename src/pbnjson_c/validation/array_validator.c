@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "array_validator.h"
 #include "validation_state.h"
@@ -74,7 +72,7 @@ static bool check(Validator *v, ValidationEvent const *e, ValidationState *s, vo
 	if (e->type == EV_ARR_END)
 	{
 		bool res = true;
-		if (varr->min_items != -1 && my_ctxt->items_count < varr->min_items)
+		if (varr->min_items != -1 && my_ctxt->items_count < (size_t)varr->min_items)
 		{
 			validation_state_notify_error(s, VEC_ARRAY_TOO_SHORT, c);
 			res = false;
@@ -91,7 +89,7 @@ static bool check(Validator *v, ValidationEvent const *e, ValidationState *s, vo
 
 	++my_ctxt->items_count;
 
-	if (varr->max_items != -1 && my_ctxt->items_count > varr->max_items)
+	if (varr->max_items != -1 && my_ctxt->items_count > (size_t)varr->max_items)
 	{
 		validation_state_notify_error(s, VEC_ARRAY_TOO_LONG, c);
 		validation_state_pop_validator(s);

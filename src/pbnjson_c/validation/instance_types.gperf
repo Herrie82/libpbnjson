@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2013 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 %define hash-function-name instance_type_hash
 %define lookup-function-name instance_type_lookup
@@ -45,7 +43,6 @@
 struct InstanceTypeFactory { char const *name; Validator *(*create)(void); ValidatorType type; };
 
 %%
-any,            generic_validator_instance, V_ANY
 array,          array_validator_instance,   V_ARR
 boolean,        boolean_validator_instance, V_BOOL
 integer,        integer_validator_instance, V_INT

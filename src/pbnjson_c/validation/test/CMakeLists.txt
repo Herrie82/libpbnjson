@@ -1,6 +1,4 @@
-# @@@LICENSE
-#
-#      Copyright (c) 2009-2013 LG Electronics, Inc.
+# Copyright (c) 2009-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,13 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# LICENSE@@@
-
-
-enable_testing()
+# SPDX-License-Identifier: Apache-2.0
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -Wall")
-include_directories(${WITH_GTEST_SRC}/include)
+include_directories(${WEBOS_GTEST_INCLUDES})
 
 SET(UnitTests
 	TestValidator
@@ -52,7 +47,7 @@ SET(UnitTests
 
 FOREACH(TEST ${UnitTests})
 	add_executable(${TEST} ${TEST}.cpp)
-	target_link_libraries(${TEST} schema_validation gtest gtest_main ${GLIB2_LDFLAGS})
+	target_link_libraries(${TEST} schema_validation ${WEBOS_GTEST_LIBRARIES} ${GLIB2_LDFLAGS})
 	add_test(Validation.${TEST} ${TEST})
 ENDFOREACH()
 

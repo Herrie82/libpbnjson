@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2013 LG Electronics, Inc.
+// Copyright (c) 2013-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include <gtest/gtest.h>
 #include <pbnjson.h>
@@ -27,7 +25,7 @@
 
 using namespace std;
 
-const size_t SIZE = 512*1024;
+const size_t SIZE = 128 * 1024;
 
 TEST(JobjPerformanceAtoms, CreateBools)
 {
@@ -97,30 +95,28 @@ TEST(JobjPerformanceAtoms, CreateObjects)
 class JobjPerformanceObject
 	: public testing::Test
 {
-protected:
-	vector<string> keys;
-
-	virtual void SetUp()
+public:
+	JobjPerformanceObject()
 	{
-		keys.clear();
-		keys.resize(SIZE);
+		keys.reserve(SIZE);
 		for (size_t i = 0; i < SIZE; ++i)
 		{
-			keys[i] = boost::lexical_cast<string>(i);
+			keys.emplace_back(boost::lexical_cast<string>(i));
 		}
 	}
 
-	virtual void TearDown()
-	{
-		keys.clear();
-	}
+protected:
+	vector<string> keys;
 };
 
 TEST_F(JobjPerformanceObject, CreateObjectOfBools)
 {
 	jvalue_ref obj = jobject_create();
 	for (auto const &key : keys)
-		jobject_put(obj, J_CSTR_TO_JVAL(key.c_str()), jboolean_create(false));
+	{
+		jvalue_ref jkey = jstring_create_nocopy(j_str_to_buffer(key.c_str(), key.size()));
+		jobject_put(obj, jkey, jboolean_create(false));
+	}
 	j_release(&obj);
 }
 
@@ -128,7 +124,10 @@ TEST_F(JobjPerformanceObject, CreateObjectOfNums)
 {
 	jvalue_ref obj = jobject_create();
 	for (auto const &key : keys)
-		jobject_put(obj, J_CSTR_TO_JVAL(key.c_str()), jnumber_create_i32(1));
+	{
+		jvalue_ref jkey = jstring_create_nocopy(j_str_to_buffer(key.c_str(), key.size()));
+		jobject_put(obj, jkey, jnumber_create_i32(1));
+	}
 	j_release(&obj);
 }
 
@@ -136,7 +135,10 @@ TEST_F(JobjPerformanceObject, CreateObjectOfStrings)
 {
 	jvalue_ref obj = jobject_create();
 	for (auto const &key : keys)
-		jobject_put(obj, J_CSTR_TO_JVAL(key.c_str()), jstring_create("test string"));
+	{
+		jvalue_ref jkey = jstring_create_nocopy(j_str_to_buffer(key.c_str(), key.size()));
+		jobject_put(obj, jkey, jstring_create("test string"));
+	}
 	j_release(&obj);
 }
 
@@ -144,7 +146,10 @@ TEST_F(JobjPerformanceObject, CreateObjectOfArrays)
 {
 	jvalue_ref obj = jobject_create();
 	for (auto const &key : keys)
-		jobject_put(obj, J_CSTR_TO_JVAL(key.c_str()), jarray_create(NULL));
+	{
+		jvalue_ref jkey = jstring_create_nocopy(j_str_to_buffer(key.c_str(), key.size()));
+		jobject_put(obj, jkey, jarray_create(NULL));
+	}
 	j_release(&obj);
 }
 
@@ -152,7 +157,10 @@ TEST_F(JobjPerformanceObject, CreateObjectOfObjects)
 {
 	jvalue_ref obj = jobject_create();
 	for (auto const &key : keys)
-		jobject_put(obj, J_CSTR_TO_JVAL(key.c_str()), jobject_create());
+	{
+		jvalue_ref jkey = jstring_create_nocopy(j_str_to_buffer(key.c_str(), key.size()));
+		jobject_put(obj, jkey, jobject_create());
+	}
 	j_release(&obj);
 }
 
@@ -168,7 +176,10 @@ protected:
 
 		obj = jobject_create();
 		for (auto const &key : keys)
-			jobject_put(obj, J_CSTR_TO_JVAL(key.c_str()), jstring_create("test string"));
+		{
+			jvalue_ref jkey = jstring_create_nocopy(j_str_to_buffer(key.c_str(), key.size()));
+			jobject_put(obj, jkey, jstring_create("test string"));
+		}
 	}
 
 	virtual void TearDown()

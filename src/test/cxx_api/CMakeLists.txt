@@ -1,6 +1,4 @@
-# @@@LICENSE
-#
-#      Copyright (c) 2012-2014 LG Electronics, Inc.
+# Copyright (c) 2012-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,16 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# LICENSE@@@
+# SPDX-License-Identifier: Apache-2.0
 
-include_directories(${API_HEADERS})
-webos_add_compiler_flags(ALL -Wall "-std=gnu++0x")
+include_directories(${API_HEADERS} ${API_HEADERS}/pbnjson/c)
 
-set(TEST_LIBRARIES pbnjson_cpp)
+set(TEST_LIBRARIES pbnjson_c pbnjson_cpp ${JSON_C_LDFLAGS})
 
 ######################### THE UNIT TESTS ############################
-
-
 SET(CPPUnitTest
 	TestDOM2
 	TestJArray
@@ -38,11 +33,16 @@ SET(CPPUnitTest
 	TestSchemaSanity2
 	TestSchemaContact2
 	TestParseCXX
+	TestIterator
+	TestJQuery
+	TestExample++
+	TestJResult
+	TestDictionary
 	)
 
 FOREACH(TEST ${CPPUnitTest})
 	add_executable(${TEST} ${TEST}.cpp)
-	target_link_libraries(${TEST} ${TEST_LIBRARIES} gtest gtest_main pthread)
+	target_link_libraries(${TEST} ${TEST_LIBRARIES} ${WEBOS_GTEST_LIBRARIES} pthread)
 	add_test(CPP.${TEST} ${TEST})
 ENDFOREACH()
 
@@ -53,3 +53,9 @@ add_definitions(-DSCHEMA_DIR="${CMAKE_CURRENT_BINARY_DIR}/../schemas/")
 
 add_executable(LoadSchema LoadSchema.cpp)
 target_link_libraries(LoadSchema ${TEST_LIBRARIES})
+
+add_executable(TestMemory TestMemory.cpp)
+target_link_libraries(TestMemory ${TEST_LIBRARIES} ${WEBOS_GTEST_LIBRARIES} pthread)
+add_custom_target(check-memory
+	COMMAND ${CMAKE_CURRENT_BINARY_DIR}/TestMemory
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

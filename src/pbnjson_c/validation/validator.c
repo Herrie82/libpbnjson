@@ -1,6 +1,4 @@
-// @@@LICENSE
-//
-//      Copyright (c) 2009-2014 LG Electronics, Inc.
+// Copyright (c) 2009-2018 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// LICENSE@@@
+// SPDX-License-Identifier: Apache-2.0
 
 #include "validator.h"
 #include "uri_scope.h"
@@ -394,4 +392,12 @@ jvalue_ref validator_get_default(Validator *v, ValidationState *s)
 	if (v->vtable->get_default)
 		return v->vtable->get_default(v, s);
 	return NULL;
+}
+
+Validator* validator_set_object_pattern_properties(Validator *v, ObjectPatternProperties *p)
+{
+	assert(v && v->vtable);
+	if (v->vtable->set_object_pattern_properties)
+		return v->vtable->set_object_pattern_properties(v, p);
+	return v;
 }

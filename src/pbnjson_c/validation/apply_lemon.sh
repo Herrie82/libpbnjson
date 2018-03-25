@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# @@@LICENSE
-#
-#      Copyright (c) 2009-2014 LG Electronics, Inc.
+# Copyright (c) 2009-2018 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,12 +14,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# LICENSE@@@
+# SPDX-License-Identifier: Apache-2.0
 
-lemon=$1
-binary_dir=$(readlink -f "$2")
-source_dir=$(readlink -f "$3")
-file=$4
+STRIP_LINES=false
+STRIP_FILE=
+
+OPTIND=1
+while getopts l: opt; do
+	case "$opt" in
+		l) STRIP_LINES=true
+		   STRIP_FILE="$OPTARG" ;;
+	esac
+done
+shift $((OPTIND-1))
+[[ "$1" = '--' ]] && shift
+
+lemon="$1"; shift
+binary_dir="$(readlink -f "$1")"; shift
+source_dir="$(readlink -f "$1")"; shift
+file="$1"; shift
 
 keyword_pattern="KEY_[0-9A-Za-z_]*"
 
@@ -49,4 +60,7 @@ if [ "$source_dir" != "$binary_dir" ]; then
 		cp -af "$source_dir/$file" "$binary_dir/" || \
 		exit 1
 fi
-"$lemon" "$binary_dir/$file" || exit 1
+"$lemon" "$@" "$binary_dir/$file" || exit 1
+if [ "$STRIP_LINES" = "true" ]; then
+	sed -i -e '/^#line/d' "$STRIP_FILE"
+fi
